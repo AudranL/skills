@@ -1,0 +1,11 @@
+# Écrire le Gherkin
+
+- **Déclaratif, pas impératif.** Décrire l'intention métier, pas les clics ni les données techniques : `Étant donné un client fidèle`, pas `Étant donné un client en base avec loyalty_flag=1` (Smart, *BDD in Action*, 5.4.1).
+- **Données significatives.** Des valeurs concrètes qui montrent la règle (`878 km` donne `439 points`), pas `toto` ni `123`.
+- **Un comportement par scénario.** Un seul `Quand`. Le titre dit ce qui distingue ce scénario des autres, sans annoncer le résultat (Smart, 5.2.2).
+- **`Règle:`** pour regrouper les scénarios sous la règle métier qu'ils illustrent, **`Contexte:`** pour les `Étant donné` communs, **`Plan du scénario:`** avec **`Exemples:`** quand plusieurs cas ne diffèrent que par les valeurs. Ne jamais regrouper des scénarios dans un plan pour gagner des lignes : un comportement et un titre par scénario.
+- **Les cas d'échec comptent.** Pour chaque règle, au moins un scénario nominal et un scénario qui montre la limite ou le refus.
+- **Un refus s'écrit par son effet, pas par ce que l'écran propose.** « Alors aucune commande n'est enregistrée, et on me dit que mon compte est bloqué » plutôt que « Alors le bouton Commander ne m'est pas proposé ». Écrit ainsi, le refus vaut pour tous les chemins qui mènent à l'action (le bouton « Commander », « Recommander » depuis l'historique, l'appel de l'application mobile), et il se vérifie là où l'action s'enregistre. « Ne me le propose pas » décrit une interface, et un seul chemin suffit à le satisfaire (Smart, *BDD in Action*, 7.3.1 « The Business Rules layer describes the expected outcomes »).
+- **« Seulement » s'écrit aussi en négatif.** Quand un « Alors » dit ce qui est présenté, ajouter un « Et » qui nomme ce qui ne l'est pas : « Alors le panier présente le stylo et le cahier Et la gomme, indisponible, n'y est pas présentée ». Le test qui suit le scénario vérifie alors l'absence, sans qu'on ait à lui rappeler.
+- **Pas d'écran ni de technique dans un scénario** : pas de bouton, de colonne de base de données ni de journalisation, sauf contrainte réelle. Une distinction qui compte pour le métier s'exprime par ce que reçoit l'utilisateur ou l'appelant.
+- **Langue** : celle des fichiers `.feature` du projet. S'il n'y en a pas, demander à l'utilisateur (français avec `# language: fr`, ou anglais).
