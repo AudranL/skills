@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Résume la couverture JaCoCo d'une classe cible (et de ses classes internes).
+"""Summarize the JaCoCo coverage of a target class (and of its inner classes).
 
-Usage :
-    python3 coverage_report.py target/site/jacoco/jacoco.xml com.exemple.Cible [--src src/main/java]
+Usage:
+    python3 coverage_report.py target/site/jacoco/jacoco.xml com.example.Target [--src src/main/java]
 
-Affiche les compteurs (lignes, branches, instructions, méthodes), puis chaque ligne
-non couverte ou partiellement couverte, avec le code source si --src est fourni.
-Code de sortie : 0 si toutes les lignes et branches sont couvertes, 1 sinon, 2 en cas d'erreur.
+Prints the counters (lines, branches, instructions, methods), then every line that is
+not covered or only partly covered, with the source code when --src is given.
+Exit code: 0 if every line and branch is covered, 1 otherwise, 2 on error.
 """
 import argparse
 import os
@@ -32,18 +32,18 @@ def read_source(src_root, package_path, filename):
 
 def pct(missed, covered):
     total = missed + covered
-    return "n/a" if total == 0 else "{:.1f} %".format(100.0 * covered / total)
+    return "n/a" if total == 0 else "{:.1f}%".format(100.0 * covered / total)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("jacoco_xml")
-    parser.add_argument("target", help="nom complet de la classe cible, ex. com.exemple.Cible")
-    parser.add_argument("--src", help="racine des sources de production, ex. src/main/java")
+    parser.add_argument("target", help="fully qualified name of the target class, e.g. com.example.Target")
+    parser.add_argument("--src", help="root of the production sources, e.g. src/main/java")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.jacoco_xml):
-        print("Fichier introuvable : " + args.jacoco_xml, file=sys.stderr)
+        print("File not found: " + args.jacoco_xml, file=sys.stderr)
         return 2
 
     root = ET.parse(args.jacoco_xml).getroot()
@@ -86,36 +86,36 @@ def main(argv=None):
                 if mi == 0 and mb == 0:
                     continue
                 if ci == 0 and cb == 0:
-                    state = "NON COUVERTE"
+                    state = "NOT COVERED"
                 elif mb > 0:
                     state = "BRANCHES {}/{}".format(cb, mb + cb)
                 else:
-                    state = "PARTIELLE"
+                    state = "PARTIAL"
                 code = lines[nr - 1].strip() if lines and nr - 1 < len(lines) else ""
                 missed_lines.append((sourcefile.get("name"), nr, state, code))
 
     if not found:
-        print("Classe {} absente du rapport : le test a-t-il tourné avec le profil golden-master ?".format(args.target),
+        print("Class {} not in the report: did the test run with the golden-master profile?".format(args.target),
               file=sys.stderr)
         return 2
 
-    print("Couverture de " + args.target)
+    print("Coverage of " + args.target)
     for kind in COUNTERS:
         missed, covered = totals[kind]
         print("  {:<12} {:>5}/{:<5} {}".format(kind, covered, missed + covered, pct(missed, covered)))
 
     if methods_with_misses:
-        print("\nMéthodes incomplètement exécutées :")
+        print("\nMethods not fully executed:")
         for cls_name, method, line in methods_with_misses:
-            print("  {}#{} (l.{})".format(cls_name, method, line))
+            print("  {}#{} (line {})".format(cls_name, method, line))
 
     if missed_lines:
-        print("\nLignes à couvrir :")
+        print("\nLines to cover:")
         for filename, nr, state, code in missed_lines:
             print("  {}:{:<5} {:<16} {}".format(filename, nr, state, code))
 
     complete = totals["LINE"][0] == 0 and totals["BRANCH"][0] == 0
-    print("\nObjectif 100 % lignes et branches : " + ("ATTEINT" if complete else "NON ATTEINT"))
+    print("\nGoal of 100% of lines and branches: " + ("MET" if complete else "NOT MET"))
     return 0 if complete else 1
 
 

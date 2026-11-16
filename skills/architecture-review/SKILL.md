@@ -1,34 +1,50 @@
 ---
 name: architecture-review
-description: "Revue d'architecture d'un diff, d'une branche ou d'une fonctionnalité livrée : sens des dépendances, domaine libre de tout framework, modèle d'un système externe gardé dans son adapter, règles métier dans le domaine, ports qui sont des conversations, dépendances entre contextes, tests d'architecture non affaiblis et violations gelées qui n'ont pas grossi, nouvelle dépendance de build justifiée par un ADR ; classement des remarques (bloquant, important, suggestion) et leur forme ; dette hors périmètre ; dette proposée au product owner comme une fonctionnalité. À charger pour toute revue d'architecture d'un changement de code, ou pour transformer une dette d'architecture en fonctionnalité."
+description: "Architecture review of a diff, a branch or a delivered slice: what to read first (ADRs, style, the slice's instructions, the architecture tests run); direction of dependencies, a domain free of any framework, an external system's model kept in its adapter, simple data crossing the boundaries, business rules in the domain, ports that are conversations, one aggregate changed per transaction, dependencies between contexts, implementations not public, a new module declared to the architecture tests, a mechanism the platform already provides not doubled; architecture tests not weakened and frozen violations that did not grow, a decision taken in the code without its ADR, a new build dependency justified by an ADR; ranking the remarks (blocking, important, suggestion) and their form, a recurring remark turned into a test; debt outside the scope; debt proposed to the product owner as a slice, by what it costs and what it brings. Load for any architecture review of a code change, or to turn an architecture debt into a slice."
 ---
 
-# Revue d'architecture
+# Architecture review
 
-Relire un diff ou une branche sous l'angle de l'architecture, sans modifier le code : celui qui a développé corrige.
+Review a diff or a branch from the architecture angle, without changing the code: the one who developed it fixes it. Review early and in small pieces: a boundary crossed in the first commit costs one line to undo; crossed for a week, it has been copied elsewhere.
 
-## Ce qu'on vérifie
+## Before reading the diff
 
-- le sens des dépendances, et que le domaine reste libre de tout framework, annotation de persistance ou objet d'API externe ;
-- que le modèle d'un système externe reste dans son adapter, avec une traduction explicite ;
-- que chaque règle métier vit dans le domaine, pas dans un contrôleur ni un adapter ;
-- que les ports correspondent à une conversation, dans le vocabulaire du domaine, pas à une table ou à une classe ;
-- qu'aucune dépendance entre contextes ne passe hors du chemin prévu ;
-- que les tests d'architecture sont verts, qu'aucune règle n'a été affaiblie et que le fichier des violations gelées n'a pas grossi ;
-- qu'une nouvelle dépendance de build est justifiée par un ADR.
+- **The rules in force**: the ADRs, the style the project chose and its confirmed rules (in the architect's memory, if there is one).
+- **What was asked**: the spec of the slice and the architecture instructions given for it. A gap from the instructions is a remark; a choice the instructions left open is not.
+- **Run the architecture tests** (skill `architecture-tests`): what they check needs no reading; the review looks at what they cannot see.
 
-## Les remarques
+## What to check
 
-Classer chaque remarque :
+- **The direction of the dependencies**, and that the domain stays free of any framework, persistence annotation or external API object.
+- **The model of an external system stays in its adapter**, with an explicit translation into the domain's model.
+- **What crosses a boundary is a simple data structure** shaped for the inside: no entity handed to an adapter to serialize as it is, no database row, framework object or external API object handed to the domain.
+- **Each business rule lives in the domain**, not in a controller, an adapter, a SQL query or a screen.
+- **The ports are conversations** in the domain's vocabulary, not a table or a class each.
+- **One aggregate changed per transaction**: a use case that changes two at once either reveals a missing concept, or asks the business whether a short delay is acceptable (an event between the two). Ask rather than accept it.
+- **No dependency between contexts outside the planned path** (adapters, a declared contract).
+- **Implementations are not public** when the language allows it: an adapter or a repository implementation that another package could call directly opens a path the architecture tests then have to close.
+- **A new module or top-level folder** is declared to the architecture tests (its zone, its annotation), otherwise it escapes every rule.
+- **A cross-cutting mechanism the platform already provides** (timeout, retry, authentication, error translation) is not written a second time in the code.
+- **The architecture tests are green, no rule was weakened** (a pattern widened, an exception added without its ADR, a rule disabled), and the file of frozen violations did not grow.
+- **A decision taken in the code without its ADR**: a new library, a new way for two contexts to talk, a new kind of storage. The ADR is written (skill `adr-writer`) before the slice is merged, or the decision is undone.
+- **A new build dependency** is justified by an ADR.
 
-- **bloquant** : règle confirmée violée, test d'architecture affaibli ;
-- **important** : dépendance dans le mauvais sens non encore couverte par un test, modèle externe qui fuit ;
-- **suggestion** : le reste.
+## The remarks
 
-Pour chacune : l'endroit (`fichier:ligne`), la règle (son identifiant, l'ADR ou le principe), une proposition concrète. Signaler aussi ce qui est bien fait.
+Rank each remark:
 
-Une dette repérée hors du périmètre de la fonctionnalité se consigne comme dette, sans bloquer la fonctionnalité.
+- **blocking**: a confirmed rule broken, an architecture test weakened;
+- **important**: a dependency in the wrong direction not yet covered by a test, an external model leaking, a decision without its ADR;
+- **suggestion**: the rest.
 
-## De la dette à une fonctionnalité
+For each one: the place (`file:line`), the rule (its identifier, the ADR or the principle), a concrete proposal. Also point out what is well done.
 
-Quand une dette coûte (bugs à répétition, fonctionnalités ralenties, tests impossibles à écrire), proposer au product owner une fonctionnalité formulée par ce qu'elle apporte (« livrer les évolutions du catalogue sans toucher à la facturation »), pas par la technique (« refactorer le module X »). Le product owner décide de sa place.
+**A remark that comes back** from one review to the next (the same kind of dependency, the same leak) becomes an architecture test: write the rule rather than repeat the remark.
+
+A debt found outside the slice's scope is recorded as debt, without blocking the slice.
+
+## From debt to a slice
+
+Debt is paid with interest: every slice that goes through the tangled code takes longer, breaks more often, or cannot be tested. Some debt is taken knowingly to deliver sooner; it is fine as long as it is repaid quickly: record it with the slice that will repay it.
+
+When a debt costs (recurring bugs, slowed slices, tests impossible to write), propose to the product owner a slice worded by what it brings ("deliver the catalog's changes without touching billing"), not by its technique ("refactor module X"), with what the debt costs today, in the business's terms (days per slice, incidents). The product owner decides its place.

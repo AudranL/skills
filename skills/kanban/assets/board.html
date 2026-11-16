@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="board.title" data-i18n-args='__TITLE_ARGS__'></title>
+<script type="application/json" id="messages">__MESSAGES__</script>
+<style>
+__COMMON_STYLE__
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 20px 6px; }
+h1 { font-size: 18px; margin: 0; }
+.filters { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, input[type=search] { font: inherit; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); }
+label.checkbox { font-size: 13px; color: var(--muted); display: flex; gap: 4px; align-items: center; }
+.epics { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 4px 20px 10px; }
+.epic-progress { font-size: 12px; color: var(--muted); min-width: 220px; cursor: pointer; }
+.epic-progress b { color: var(--text); font-weight: 600; }
+.bar { height: 4px; background: var(--chip); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.bar span { display: block; height: 100%; background: var(--story); }
+.alert { margin: 0 20px 10px; padding: 8px 12px; border-radius: 6px; background: var(--alert-bg);
+  color: var(--alert); font-size: 13px; }
+main { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); gap: 10px;
+  padding: 4px 20px 24px; overflow-x: auto; align-items: start; }
+.column { background: var(--column); border-radius: 10px; padding: 8px; min-height: 120px; }
+.column h2 { display: flex; justify-content: space-between; margin: 4px 4px 8px; font-size: 12px;
+  font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.empty { color: var(--muted); text-align: center; margin: 16px 0; }
+.card { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--story);
+  border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+.card:hover, .card:focus-visible { border-color: var(--accent); outline: none; }
+.t-epic { border-left-color: var(--epic); } .t-task { border-left-color: var(--task); }
+.t-spike { border-left-color: var(--spike); } .t-bug { border-left-color: var(--bug); }
+.top, .bottom { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.card .title { margin: 4px 0; font-weight: 500; }
+.key { font-weight: 600; font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+aside { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--surface);
+  border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.12); overflow-y: auto;
+  transform: translateX(105%); transition: transform .18s ease; padding: 18px 24px 40px; }
+aside.open { transform: none; }
+.panel-top { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.close { font: inherit; font-size: 20px; line-height: 1; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin: 8px 0 12px; }
+.meta a, .subtitle a { color: var(--accent); cursor: pointer; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.tabs button { font: inherit; font-size: 13px; padding: 6px 10px; border: 0; background: none;
+  color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+@media (max-width: 700px) {
+  header, .epics { padding-left: 16px; padding-right: 16px; }
+  main { grid-auto-flow: row; grid-auto-columns: auto; padding: 4px 16px 24px; }
+  .filters { margin-left: 0; }
+  aside { padding: 14px 16px 32px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title"></h1>
+    <div class="subtitle" id="subtitle"></div>
+  </div>
+  <div class="filters">
+    <select id="epic-filter" data-i18n-aria-label="board.filter.epic"></select>
+    <input type="search" id="text-filter" data-i18n-placeholder="board.filter.searchPlaceholder"
+      data-i18n-aria-label="board.filter.search">
+    <label class="checkbox" data-i18n="board.filter.abandoned"><input type="checkbox" id="abandoned-filter"></label>
+  </div>
+</header>
+<div class="epics" id="epics"></div>
+<div id="alerts"></div>
+<main id="board"></main>
+<aside id="panel" aria-hidden="true"></aside>
+<script type="application/json" id="data">__DATA__</script>
+<script>
+__I18N_SCRIPT__
+</script>
+<script>
+__BOARD_SCRIPT__
+</script>
+</body>
+</html>

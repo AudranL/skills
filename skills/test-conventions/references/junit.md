@@ -27,6 +27,7 @@ The JUnit shape of the `unit-tests` rules.
 - A fresh object under test for each test (`@BeforeEach` or an initialized field); no mutable `static` field, no `@BeforeAll` preparing shared state.
 - **Time and randomness are preferably injected** (a `Clock`, a `Random` or `RandomGenerator`): the code becomes deterministic, and the test chooses the date or the draw. In the test, `Clock.fixed(Instant.parse("2026-11-02T10:00:00Z"), ZoneOffset.UTC)` and a `Random` with a seed. When changing the code to inject them costs too much, the static call is mocked rather than left untested (with Mockito, `mockStatic(LocalDate.class, CALLS_REAL_METHODS)` in a `try`-with-resources).
 - Neither the machine's locale nor its time zone: pass them explicitly (`Locale.FRANCE`, `ZoneId.of("Europe/Paris")`).
+- **A Test Data Builder** in the test sources (`aCustomer().withOrderCount(11).build()`), whose `build()` goes through the production constructor or factory; a value the object computes (a cart's total) follows from what the builder adds (`withItemPricedAt(euros(100))`). With Lombok, `@Builder` goes on the constructor or the factory method that checks the rules, so that `build()` goes through them.
 - Files: `@TempDir Path folder` as a non-static field or a parameter gives a new folder per test, deleted by JUnit.
 
 ## Running the tests
@@ -51,7 +52,7 @@ class OrderPricingTest {
     void should_apply_loyalty_discount_when_customer_has_more_than_ten_orders() {
         // Given
         Customer loyalCustomer = aCustomer().withOrderCount(11).build();
-        Cart cart = aCart().withTotal(euros(100)).build();
+        Cart cart = aCart().withItemPricedAt(euros(100)).build();
 
         // When
         Money total = pricing.totalFor(cart, loyalCustomer);
@@ -64,7 +65,7 @@ class OrderPricingTest {
     @CsvSource({"10, 100", "11, 90"})
     void loyalty_discount_starts_after_ten_orders(int orders, int expectedTotal) {
         Customer customer = aCustomer().withOrderCount(orders).build();
-        Cart cart = aCart().withTotal(euros(100)).build();
+        Cart cart = aCart().withItemPricedAt(euros(100)).build();
 
         assertThat(pricing.totalFor(cart, customer)).isEqualTo(euros(expectedTotal));
     }

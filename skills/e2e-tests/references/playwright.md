@@ -1,23 +1,32 @@
 # Playwright
 
-## Viser, attendre, vérifier
+## Targeting, waiting, checking
 
-- **Viser** : `page.getByRole('button', { name: 'Enregistrer' })`, `page.getByLabel('Adresse')`. `getByTestId` seulement quand aucun rôle ni nom ne convient, avec un attribut demandé au développeur.
-- **Texte exact** : `page.getByText('à 16h', { exact: true })`, ou `page.getByText(/à 16h$/)`. Sans `exact`, `getByText` cherche une sous-chaîne, sans tenir compte de la casse.
-- **Attendre un effet** : les assertions web attendent seules (`await expect(locator).toHaveText(…)`, `toBeVisible()`, `toHaveCount(0)`) ; pour une valeur hors de la page (un fichier écrit), `await expect.poll(() => lireLeFichier()).toEqual(…)`. Jamais `page.waitForTimeout()`.
-- **Délais** : dans `playwright.config` (`timeout`, `expect: { timeout }`), pas dans chaque test.
-- **Couche des gestes** : des fonctions (ou un objet) dans les mots du métier, qui seules connaissent les rôles et les libellés : `await reserverUnVelo(page, { station: 'Gare' })`.
+- **Target**: `page.getByRole('button', { name: 'Save' })`, `page.getByLabel('Address')`. `getByTestId` only when no role or name fits, with an attribute asked of the developer.
+- **Narrow rather than pick**: a locator that matches two elements makes the action fail (locators are strict). Do not silence it with `.first()` or `.nth()`: narrow it to a region (`page.getByRole('row', { name: 'Central Station' }).getByRole('button', { name: 'Book' })`) or filter it (`locator.filter({ hasText: … })`).
+- **Exact text**: `page.getByText('Gate 4', { exact: true })`, or `page.getByText(/Gate 4$/)`. Without `exact`, `getByText` looks for a substring, ignoring case.
+- **Wait for an effect**: web assertions wait on their own (`await expect(locator).toHaveText(…)`, `toBeVisible()`, `toHaveCount(0)`); for a value outside the page (a file written), `await expect.poll(() => readTheFile()).toEqual(…)`. Never `page.waitForTimeout()`. Never read a value and then compare it (`expect(await locator.textContent()).toBe(…)`): the reading does not wait, and the journey fails or passes by chance.
+- **Delays**: in `playwright.config` (`timeout`, `expect: { timeout }`), not in each test.
+- **Actions layer**: functions (or an object per screen) in business words, which alone know the roles and labels: `await bookABike(page, { station: 'Central Station' })`.
 
-## Isolation et captures
+## Configuration
 
-- **Un contexte neuf par test** : c'est le cas par défaut avec les fixtures de `@playwright/test` (`page`, `context`).
-- **Réseau** (navigateur) : `await context.route('**/*', (route) => route.abort())`, puis n'autoriser que ce que le parcours appelle.
-- **Captures** : vérifier d'abord un texte attendu, puis `await page.screenshot({ path, animations: 'disabled' })`, dans un dossier propre à la recette (par exemple `dist/captures-<fonctionnalité>/`), le nom du fichier tiré du scénario.
+- **`retries: 0`**: a retry turns a flaky journey green. If the project keeps retries in CI, the report's "flaky" list is read after each run and each journey in it is investigated.
+- **`forbidOnly: !!process.env.CI`**: a `test.only` forgotten in a commit fails the run instead of skipping all the other journeys.
+- **On failure only**: `use: { trace: 'retain-on-failure', screenshot: 'only-on-failure' }`; the trace (`npx playwright show-trace`) replays each action with the page's state.
+- **Parallel runs** (`fullyParallel`, `workers`) are only safe once each journey is isolated: they also reveal the journeys that are not.
+
+## Isolation, time and screenshots
+
+- **A fresh context per test**: that is the default with the `@playwright/test` fixtures (`page`, `context`).
+- **Network** (browser): `await context.route('**/*', (route) => route.abort())`, then allow only what the journey calls.
+- **Time** (browser): `await page.clock.setFixedTime(new Date('2026-03-02T09:00:00'))`, or `page.clock.install({ time })` when the page's timers must run, before the navigation.
+- **Screenshots**: first check an expected text, then `await page.screenshot({ path, animations: 'disabled' })`, into a folder of the acceptance check's own (for instance `dist/screenshots-<slice>/`), the file name taken from the scenario.
 
 ## Electron
 
-- **Lancer le paquet**, pas les sources : `_electron.launch({ executablePath: <chemin de l'exécutable empaqueté>, args: ['--user-data-dir=<dossier temporaire>', <drapeau de fenêtre cachée de l'application>] })` (`import { _electron } from 'playwright'`).
-- **Côté application**, le mode de test crée la fenêtre avec `show: false` (sans l'afficher à `ready-to-show`) et `webPreferences: { backgroundThrottling: false }`, pour que les clics et les captures marchent sur une fenêtre cachée (`page.screenshot`, ou `webContents.capturePage()` dans le processus principal). C'est au développeur de l'ajouter : le demander s'il manque.
-- **Aucune fenêtre visible à la fin** : `await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))` doit rendre `false`.
-- **Le réseau** se bloque côté application, en mode de test (par exemple par `session.webRequest`), puisque le parcours ne passe pas par un navigateur que Playwright contrôle entièrement.
-- **Une fixture** lance l'application, crée et efface le dossier temporaire, vérifie qu'aucune fenêtre n'est visible et ferme l'application, pour chaque test.
+- **Launch the package**, not the sources: `_electron.launch({ executablePath: <path to the packaged executable>, args: ['--user-data-dir=<temporary folder>', <the application's hidden-window flag>] })` (`import { _electron } from 'playwright'`).
+- **On the application's side**, the test mode creates the window with `show: false` (without showing it on `ready-to-show`) and `webPreferences: { backgroundThrottling: false }`, so that clicks and screenshots work on a hidden window (`page.screenshot`, or `webContents.capturePage()` in the main process). It is the developer's to add, as test configuration: ask for it if it is missing.
+- **No visible window at the end**: `await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.isVisible()))` must return `false`.
+- **The network** is blocked on the application's side, in test mode (for instance through `session.webRequest`), since the journey does not go through a browser Playwright fully controls.
+- **A fixture** launches the application, creates and deletes the temporary folder, checks that no window is visible and closes the application, for each test.

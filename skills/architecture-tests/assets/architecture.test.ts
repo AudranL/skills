@@ -1,13 +1,13 @@
 /**
- * Tests d'architecture : modèle à adapter (skill architecture-tests, references/typescript.md).
+ * Architecture tests: a model to adapt (skill architecture-tests, references/typescript.md).
  *
- * Lit les imports de chaque fichier de SRC avec le compilateur TypeScript, puis vérifie des règles
- * écrites comme des fonctions qui rendent la liste des violations. Chaque message d'échec cite
- * l'ADR de la règle et liste les fichiers en cause.
+ * Reads the imports of every file under SRC with the TypeScript compiler, then checks rules
+ * written as functions that return the list of violations. Each failure message cites the
+ * rule's ADR and lists the files at fault.
  *
- * À adapter : les zones de l'architecture, les alias de tsconfig, les règles et leurs ADR, la
- * langue des noms (celle du code du projet).
- * Vitest accepte un message en second argument de expect ; Jest non : le mettre dans le titre.
+ * To adapt: the zones of the architecture, the files allowed outside a zone, the tsconfig
+ * aliases, the rules and their ADRs, the language of the names (that of the project's code).
+ * Vitest takes a message as the second argument of expect; Jest does not: put it in the title.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -17,21 +17,25 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 
-/** Les zones de l'architecture, déclarées ici et nulle part ailleurs. */
+/** The zones of the architecture, declared here and nowhere else. */
 const DOMAIN = join(SRC, 'domain')
 const APPLICATION = join(SRC, 'application')
 const ADAPTERS = join(SRC, 'adapters')
-/** Le contrat partagé entre modules ou processus : des types seulement. */
+/** The contract shared between modules or processes: types only. */
 const CONTRACT = join(SRC, 'contract')
+const ZONES = [DOMAIN, APPLICATION, ADAPTERS, CONTRACT]
 
-/** Les alias de compilerOptions.paths (tsconfig.json), à garder synchronisés. */
+/** The only files allowed outside a zone: the entry point that wires the zones, and this test. */
+const OUTSIDE_ZONES = [join(SRC, 'main.ts'), fileURLToPath(import.meta.url)]
+
+/** The aliases of compilerOptions.paths (tsconfig.json), to keep in sync. */
 const ALIASES: [string, string][] = [
   ['@domain/', DOMAIN],
   ['@application/', APPLICATION],
   ['@contract/', CONTRACT]
 ]
 
-/** Le seul module externe que les tests du domaine peuvent importer. */
+/** The only external module the domain's tests may import. */
 const TEST_FRAMEWORK = 'vitest'
 
 interface Import {
@@ -67,8 +71,8 @@ function readable(path: string): string {
 
 function isTypesOnlyImport(declaration: ts.ImportDeclaration): boolean {
   const clause = declaration.importClause
-  if (!clause) return false // import 'module' : chargé pour ses effets
-  // TypeScript 5.9 et plus. Avant : clause.isTypeOnly.
+  if (!clause) return false // import 'module': loaded for its side effects
+  // TypeScript 5.9 and later. Before: clause.isTypeOnly.
   if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) return true
   if (clause.name) return false
   const bindings = clause.namedBindings
@@ -80,7 +84,7 @@ function isTypesOnlyImport(declaration: ts.ImportDeclaration): boolean {
   )
 }
 
-/** Tous les imports : statiques, réexportations, import() dynamiques, require, import('…').Type. */
+/** Every import: static, re-exports, dynamic import(), require, import('…').Type. */
 function importsOf(tree: ts.SourceFile): Import[] {
   const imports: Import[] = []
   const visit = (node: ts.Node): void => {
@@ -113,7 +117,7 @@ function importsOf(tree: ts.SourceFile): Import[] {
   return imports
 }
 
-/** Le fichier visé par un import interne, ou null pour un module externe (npm ou Node). */
+/** The file an internal import targets, or null for an external module (npm or Node). */
 function targetOf(specifier: string, from: string): string | null {
   if (specifier.startsWith('.')) return resolve(dirname(from), specifier)
   for (const [alias, folder] of ALIASES) {
@@ -129,10 +133,10 @@ const SOURCES: SourceFile[] = pathsUnder(SRC)
     return { path, tree, imports: importsOf(tree) }
   })
 
-/** Les fichiers d'une zone. Une zone vide fait échouer la règle : elle ne vérifierait plus rien. */
+/** The files of a zone. An empty zone fails the rule: it would no longer check anything. */
 function sourcesOf(folder: string): SourceFile[] {
   const files = SOURCES.filter((file) => isInside(file.path, folder))
-  expect(files.length, `Règle sans objet : ${readable(folder)}/ est vide ou a changé de nom.`).toBeGreaterThan(0)
+  expect(files.length, `Rule with nothing to check: ${readable(folder)}/ is empty or was renamed.`).toBeGreaterThan(0)
   return files
 }
 
@@ -143,16 +147,16 @@ function violations(
   return files.flatMap((file) =>
     file.imports
       .filter((imported) => isForbidden(imported, file))
-      .map((imported) => `${readable(file.path)} importe « ${imported.specifier} »`)
+      .map((imported) => `${readable(file.path)} imports "${imported.specifier}"`)
   )
 }
 
-/** Le module d'un fichier du domaine : son dossier de premier niveau sous DOMAIN. */
+/** The module of a domain file: its top-level folder under DOMAIN. */
 function domainModuleOf(path: string): string {
   return relative(DOMAIN, path).split(sep)[0]
 }
 
-/** Les cycles entre modules, écrits « a → b → a ». Le parcours en trouve au moins un s'il y en a. */
+/** The cycles between modules, written "a → b → a". The walk finds at least one if there is any. */
 function cyclesOf(dependencies: Map<string, Set<string>>): string[] {
   const cycles: string[] = []
   const explored = new Set<string>()
@@ -170,8 +174,19 @@ function cyclesOf(dependencies: Map<string, Set<string>>): string[] {
   return cycles
 }
 
-describe("Règles d'architecture", () => {
-  it("le domaine n'importe que le domaine, et ses tests le framework de test en plus (ADR 001)", () => {
+describe('Architecture rules', () => {
+  it('every source file belongs to a declared zone (ADR 001)', () => {
+    const unchecked = SOURCES.map((file) => file.path)
+      .filter((path) => !OUTSIDE_ZONES.includes(path) && !ZONES.some((zone) => isInside(path, zone)))
+      .map(readable)
+
+    expect(
+      unchecked,
+      'ADR 001: a file outside the declared zones escapes every rule; move it into a zone, or declare a new zone.'
+    ).toEqual([])
+  })
+
+  it('the domain imports only the domain, and its tests the test framework too (ADR 001)', () => {
     const forbidden = violations(sourcesOf(DOMAIN), (imported, file) => {
       const target = targetOf(imported.specifier, file.path)
       if (target !== null) return !isInside(target, DOMAIN)
@@ -180,11 +195,11 @@ describe("Règles d'architecture", () => {
 
     expect(
       forbidden,
-      "ADR 001 : le domaine ne dépend d'aucun framework, d'aucune bibliothèque ni d'aucun fichier hors du domaine."
+      'ADR 001: the domain depends on no framework, no library and no file outside the domain.'
     ).toEqual([])
   })
 
-  it("le domaine et l'application n'importent aucun adapter (ADR 001)", () => {
+  it('the domain and the application import no adapter (ADR 001)', () => {
     const forbidden = violations(
       [...sourcesOf(DOMAIN), ...sourcesOf(APPLICATION)],
       (imported, file) => {
@@ -195,11 +210,11 @@ describe("Règles d'architecture", () => {
 
     expect(
       forbidden,
-      "ADR 001 : les dépendances vont des adapters vers l'application et le domaine, jamais l'inverse."
+      'ADR 001: dependencies go from the adapters to the application and the domain, never the other way round.'
     ).toEqual([])
   })
 
-  it('le contrat ne contient que des déclarations de types (ADR 002)', () => {
+  it('the contract holds type declarations only (ADR 002)', () => {
     const code = sourcesOf(CONTRACT).flatMap((file) =>
       file.tree.statements
         .filter(
@@ -209,16 +224,16 @@ describe("Règles d'architecture", () => {
             !ts.isImportDeclaration(statement) &&
             !ts.isExportDeclaration(statement)
         )
-        .map((statement) => `${readable(file.path)} : « ${statement.getText().split('\n')[0]} »`)
+        .map((statement) => `${readable(file.path)}: "${statement.getText().split('\n')[0]}"`)
     )
 
     expect(
       code,
-      "ADR 002 : le contrat ne contient que des types, effacés à la compilation ; le code va dans le module qui l'exécute."
+      'ADR 002: the contract holds types only, erased at compilation; the code goes in the module that runs it.'
     ).toEqual([])
   })
 
-  it('les modules du domaine ne forment aucun cycle (ADR 003)', () => {
+  it('the modules of the domain form no cycle (ADR 003)', () => {
     const dependencies = new Map<string, Set<string>>()
     for (const file of sourcesOf(DOMAIN)) {
       const from = domainModuleOf(file.path)
@@ -232,7 +247,7 @@ describe("Règles d'architecture", () => {
 
     expect(
       cyclesOf(dependencies),
-      "ADR 003 : un module peut en importer un autre dans un seul sens ; deux modules en cycle ne peuvent plus changer ni se tester l'un sans l'autre."
+      'ADR 003: a module may import another in one direction only; two modules in a cycle can no longer change or be tested one without the other.'
     ).toEqual([])
   })
 })

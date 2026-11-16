@@ -1,51 +1,63 @@
 # TypeScript, JavaScript
 
-Trois façons de faire, à choisir avec l'utilisateur (l'outil choisi se consigne dans un ADR) :
+## Before a test: what the compiler and the packages hold
 
-| | Test écrit à la main | dependency-cruiser | eslint-plugin-boundaries |
+- **A workspace package** (npm, pnpm or Yarn workspaces) exposes only what its `exports` field lists: an import of one of its internal files fails. One package per context or per layer turns the boundary into an error at compilation.
+- **Project references**: a project with `composite: true` cannot import a file outside its `include` unless it references the project that owns it; the references are the allowed dependencies.
+- **In an Nx monorepo**, the `@nx/enforce-module-boundaries` lint rule, with tags on each project (`scope:orders`, `type:domain`) and `depConstraints` (`{ sourceTag: 'type:domain', onlyDependOnLibsWithTags: ['type:domain'] }`), is already there: use it rather than adding a tool.
+
+A test then covers what packages cannot express: no framework in the domain, a folder reserved for types, cycles inside a package.
+
+## Choosing
+
+Three ways to write the rules, to choose with the user (the chosen tool is recorded in an ADR):
+
+| | Hand-written test | dependency-cruiser | eslint-plugin-boundaries |
 |---|---|---|---|
-| Dépendance de build | Aucune (le compilateur `typescript` est déjà là) | Une | Une, dans le linter |
-| Où il tourne | Avec les autres tests | Une commande à brancher dans les tests ou la CI | Dans l'éditeur et au lint |
-| Règles | Des fonctions, aussi fines qu'il faut (imports de types, contenu d'un dossier, noms de fichiers) | Des expressions régulières sur les chemins, cycles, modules orphelins | Des types d'éléments par dossier et qui peut importer qui |
-| Gel des violations | À écrire (voir plus bas) | `depcruise-baseline`, puis `--ignore-known` | Non |
-| À retenir quand | Peu de règles, ou des règles que les outils n'expriment pas | Les règles se multiplient, ou un graphe des dépendances est utile | L'équipe veut le retour dans l'éditeur, en plus d'un test |
+| Build dependency | None (the `typescript` compiler is already there) | One | One, in the linter |
+| Where it runs | With the other tests | A command to wire into the tests or the CI | In the editor and at lint time |
+| Rules | Functions, as precise as needed (type imports, a folder's content, file names) | Regular expressions on paths, cycles, orphan modules, production code importing a development dependency | Element types per folder and who may import whom |
+| Freezing violations | To write (see below) | `depcruise-baseline`, then `--ignore-known` | No |
+| Pick it when | Few rules, or rules the tools cannot express | The rules multiply, or a dependency graph helps | The team wants the feedback in the editor, on top of a test |
 
-Un lint se contourne plus facilement qu'un test (avertissement ignoré, règle désactivée sur une ligne) : s'il porte des règles d'architecture, le build doit échouer sur une erreur.
+A lint is easier to bypass than a test (a warning ignored, a rule disabled on one line): if it carries architecture rules, the build must fail on an error.
 
-## Test écrit à la main
+## Hand-written test
 
-Modèle à adapter : `assets/architecture.test.ts` (Vitest). Il :
+Model to adapt: `assets/architecture.test.ts` (Vitest). It:
 
-- parcourt les fichiers `.ts` et `.tsx` de la racine des sources et lit leurs imports avec `ts.createSourceFile`, sans compiler le projet : rapide, et indépendant de la configuration du build ;
-- voit tous les imports : `import` (en distinguant `import type`), `export … from`, `import()` dynamique, `require`, `import('…').Type` ;
-- résout les chemins relatifs et les alias de `tsconfig.json` (`compilerOptions.paths`), déclarés une fois en tête du fichier : un module externe (npm, Node) n'a pas de cible ;
-- écrit chaque règle comme une fonction qui rend la liste des violations (« `domain/order.ts` importe « express » »), comparée à `[]` avec un message qui cite l'ADR ;
-- fait échouer une règle dont la zone ne contient plus aucun fichier (« Règle sans objet ») ;
-- détecte les cycles entre modules (dossiers de premier niveau d'une zone) par un parcours en profondeur.
+- walks the `.ts` and `.tsx` files of the source root and reads their imports with `ts.createSourceFile`, without compiling the project: fast, and independent of the build configuration;
+- sees every import: `import` (telling `import type` apart), `export … from`, dynamic `import()`, `require`, `import('…').Type`;
+- resolves relative paths and the `tsconfig.json` aliases (`compilerOptions.paths`), declared once at the top of the file: an external module (npm, Node) has no target;
+- fails on a source file that belongs to no declared zone, so that a new folder is never left unchecked;
+- writes each rule as a function that returns the list of violations ("`domain/order.ts` imports \"express\""), compared with `[]` with a message that cites the ADR;
+- fails a rule whose zone no longer holds any file ("Rule with nothing to check");
+- detects cycles between modules (the top-level folders of a zone) with a depth-first walk.
 
-À adapter : les zones, les alias, les règles et leurs ADR, la langue des noms. Avec Jest, `expect` n'accepte pas de message en second argument : le mettre dans le titre du test.
+To adapt: the zones, the files allowed outside a zone, the aliases, the rules and their ADRs, the language of the names. With Jest, `expect` takes no message as a second argument: put it in the test's title.
 
-Autres règles qui s'écrivent de la même façon :
+Other rules written the same way:
 
-- **Imports permis seulement en types** : une zone (l'interface, un autre processus) peut importer les types du domaine, mais pas son code. La règle refuse les imports internes vers le domaine dont `typesOnly` est faux.
-- **Personne n'importe une zone** (un point d'entrée, un fichier de préchargement) : la règle refuse tout import dont la cible est dans cette zone.
-- **Modules interdits** qui traduisent une qualité, par exemple aucune requête réseau : refuser `http`, `https`, `http2`, `net`, `tls`, `dgram`, avec ou sans le préfixe `node:`.
-- **Noms de fichiers** : parcourir les chemins et refuser ceux qui ne suivent pas la convention de l'ADR (par exemple, des caractères hors ASCII qui s'écrivent différemment selon le système).
+- **Imports allowed as types only**: a zone (the interface, another process) may import the domain's types, but not its code. The rule refuses internal imports into the domain whose `typesOnly` is false.
+- **Nobody imports a zone** (an entry point, a preload file): the rule refuses any import whose target is in that zone.
+- **Forbidden modules** that carry a quality, for instance no network request: refuse `http`, `https`, `http2`, `net`, `tls`, `dgram`, with or without the `node:` prefix.
+- **File names**: walk the paths and refuse those that do not follow the ADR's convention (for instance, non-ASCII characters that are written differently from one system to another).
+- **A metric with a threshold**: count each module's dependencies from the same import list, and list the modules beyond the threshold.
 
-Limites : les alias sont à garder synchronisés avec `tsconfig.json` ; une dépendance déclarée dans `package.json` sans être importée n'est pas vue ; un fichier qui réexporte tout un dossier (`index.ts`) se vérifie comme les autres, par le dossier qu'il vise.
+Limits: the aliases must stay in sync with `tsconfig.json`; a dependency declared in `package.json` without being imported is not seen; a file that re-exports a whole folder (`index.ts`) is checked like the others, through the folder it targets.
 
-**Geler les violations existantes** : enregistrer les violations actuelles dans un fichier versionné à côté du test (par exemple `architecture.known-violations.json` : pour chaque règle, la liste de ses messages de violation). Le test échoue sur une violation absente de la liste, et aussi sur une entrée de la liste qui ne se produit plus, pour qu'on l'en retire : le nombre de violations ne peut que baisser. Régénérer ce fichier pour faire passer le test, jamais sans l'accord de l'utilisateur.
+**Freezing existing violations**: record the current violations in a versioned file next to the test (for instance `architecture.known-violations.json`: for each rule, the list of its violation messages). The test fails on a violation missing from the list, and also on an entry of the list that no longer happens, so that it is removed: the number of violations can only go down. Regenerate that file to make the test pass, never without the user's agreement.
 
 ## dependency-cruiser
 
-- Configuration `.dependency-cruiser.cjs` (générée par `npx depcruise --init`) : des règles `forbidden` avec `from` et `to` (`path`, `pathNot`, `dependencyTypes`), `circular: true` pour les cycles. `options.tsConfig` pour lire les alias, `options.tsPreCompilationDeps: true` pour voir aussi les imports de types.
-- Lancer `npx depcruise src --config .dependency-cruiser.cjs` dans un script du `package.json` appelé par la commande de test ou par la CI, pour que le build échoue sur une erreur.
-- Chaque règle a un `name` et un `comment` qui cite l'ADR : c'est le message que lira le développeur.
-- Gel : `npx depcruise-baseline src` écrit `.dependency-cruiser-known-violations.json` ; ensuite, `depcruise --ignore-known` n'échoue que sur une violation nouvelle.
-- Le graphe des dépendances (`--output-type dot` ou `mermaid`) aide à un diagnostic ; il ne remplace pas les règles.
+- Configuration `.dependency-cruiser.cjs` (generated by `npx depcruise --init`): `forbidden` rules with `from` and `to` (`path`, `pathNot`, `dependencyTypes`), `circular: true` for cycles. `options.tsConfig` to read the aliases, `options.tsPreCompilationDeps: true` to also see type imports. The generated configuration already holds useful rules: keep `no-circular`, `no-orphans`, `not-to-unresolvable` and `not-to-dev-dep` (production code that imports a development dependency).
+- Run `npx depcruise src --config .dependency-cruiser.cjs` in a `package.json` script called by the test command or by the CI, so that the build fails on an error.
+- Each rule has a `name` and a `comment` that cites the ADR: that is the message the developer will read.
+- Freezing: `npx depcruise-baseline src` writes `.dependency-cruiser-known-violations.json`; then `depcruise --ignore-known` fails only on a new violation.
+- The dependency graph (`--output-type dot` or `mermaid`) helps a diagnosis; it does not replace the rules.
 
 ## eslint-plugin-boundaries
 
-- Déclarer les éléments (`settings['boundaries/elements']` : un type par dossier, par exemple `domain`, `application`, `adapters`) et les dépendances permises (`boundaries/element-types` : `default: 'disallow'`, puis une liste de `from` / `allow`).
-- Les cycles ne sont pas couverts : `import/no-cycle` (eslint-plugin-import) ou un autre outil.
-- Mettre ces règles en `error`, et faire échouer le build sur une erreur de lint.
+- Declare the elements (`settings['boundaries/elements']`: one type per folder, for instance `domain`, `application`, `adapters`) and the allowed dependencies (`boundaries/element-types`: `default: 'disallow'`, then a list of `from` / `allow`).
+- Cycles are not covered: `import/no-cycle` (eslint-plugin-import) or another tool.
+- Set these rules to `error`, and make the build fail on a lint error.

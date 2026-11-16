@@ -41,7 +41,7 @@
 
 ## Data and persistence
 
-- **A Test Data Builder** that returns a valid object, to be adjusted (`anOrder({ total: 100 })`), rather than `as any` or `!` to make a test compile.
+- **A Test Data Builder** that returns a valid object, built through the production constructor or factory, to be adjusted (`anOrder({ customer: ALICE })`), rather than `as any` or `!` to make a test compile. A value the object computes (a total from its lines) is not an option of the builder: it follows from what the builder adds.
 - **The persistence layer is tested against the real storage**: the real database engine and the real schema, rather than an in-memory database of another engine. What lives on disk (an SQLite file, plain files) gets a temporary folder per test (`mkdtempSync(join(tmpdir(), 'app-'))`), removed in `afterEach` (`rmSync(folder, { recursive: true, force: true })`).
 
 ## Run

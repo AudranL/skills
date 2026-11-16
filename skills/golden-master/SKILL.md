@@ -1,68 +1,68 @@
 ---
 name: golden-master
-description: "Pose un golden master (test de caractérisation, approval test) sur du code Java / Spring Boot existant pour figer son comportement actuel avant un refactoring. Utilise ApprovalTests.Java et une génération combinatoire des entrées (CombinationApprovals), puis prouve que le filet tient avec JaCoCo (couverture des branches) et PIT (tests de mutation). Couvre le code pur (mappers, utils, règles de calcul) comme les services à dépendances (mocks qui enregistrent les appels, horloge et aléatoire maîtrisés). Utiliser dès que l'utilisateur parle de golden master, de test de caractérisation, d'approval test, de snapshot test, de code legacy sans tests, de sécuriser ou blinder une classe avant de la refactorer, ou demande « comment toucher à ce code sans rien casser » — même sans dire « golden master ». Périmètre : un projet Maven. La skill s'arrête au filet de sécurité et propose un plan de refactoring, elle ne refactore pas."
+description: "Put a golden master (characterization test, approval test) on existing Java / Spring Boot code to freeze its current behavior before a refactoring: ApprovalTests.Java over a combinatorial generation of the inputs (CombinationApprovals), then proof that the net holds with JaCoCo (branch coverage) and PIT (mutation testing). Covers pure code (mappers, utilities, calculation rules) as well as services with dependencies (mocks that record the calls, clock and randomness under control). Load as soon as the user mentions a golden master, a characterization test, an approval test, a snapshot test, legacy code without tests, securing a class before refactoring it, or asks how to touch some code without breaking anything, even without the words golden master. Scope: a Maven project. The skill stops at the safety net and proposes a refactoring plan; it does not refactor."
 ---
 
-# Golden master Java / Spring Boot
+# Golden master for Java / Spring Boot
 
-## Principe
+## Principle
 
-Un golden master ne dit pas si le code est juste : il enregistre **ce qu'il fait aujourd'hui**, bugs compris, pour détecter le moindre changement de comportement pendant un refactoring.
+A golden master does not say whether the code is right: it records **what the code does today**, bugs included, so that the slightest change of behavior during a refactoring shows.
 
-1. On fait varier les entrées selon tous les **axes** qui influencent le code (null / non null, chaque valeur d'enum, chaque branche…), en **produit cartésien**.
-2. Pour chaque combinaison, on imprime une ligne de texte **déterministe** : les entrées, puis la sortie, l'exception levée, et les effets de bord (appels aux dépendances).
-3. ApprovalTests compare ce texte (`*.received.txt`) au fichier de référence versionné (`*.approved.txt`). Toute différence fait échouer le test.
-4. On **prouve** que le filet est assez serré : JaCoCo montre que chaque branche est exécutée, PIT montre que chaque mutation du code fait échouer le test.
+1. The inputs vary along every **axis** that influences the code (null or not, each enum value, each branch…), as a **cartesian product**.
+2. For each combination, the test prints one **deterministic** line of text: the inputs, then the output, the exception thrown, and the side effects (calls to the dependencies).
+3. ApprovalTests compares this text (`*.received.txt`) with the versioned reference file (`*.approved.txt`). Any difference fails the test.
+4. The net is then **proved** tight enough: JaCoCo shows that every branch runs, PIT shows that every mutation of the code fails the test.
 
-Un golden master sans couverture ni mutation est un faux sentiment de sécurité : une branche jamais exécutée ou un champ jamais imprimé peut changer sans que rien ne casse.
+A golden master without coverage and mutation is a false sense of safety: a branch that never runs, or a field that is never printed, can change without anything breaking.
 
-## Règles absolues
+## Absolute rules
 
-- **Ne pas modifier le code de production** pendant la construction du golden master. Seule exception : une couture minimale (injecter une `Clock`, extraire un appel statique) faite par un refactoring automatique de l'IDE, **après accord explicite de l'utilisateur**. Vérifier avec `git diff --stat -- src/main` qu'il n'y a rien d'autre.
-- **Ne jamais corriger un comportement suspect** (NPE, valeur incohérente, commentaire contredit par le code) : le figer tel quel et le lister dans le rapport. Le corriger est une décision métier, prise plus tard, dans un commit à part.
-- **Sortie déterministe** : pas de `Objet@1b6d3586`, pas de date du jour, pas d'UUID aléatoire, pas d'ordre de `HashMap` / `HashSet`. Le test doit donner exactement le même fichier deux fois de suite.
-- **Relire avant d'approuver** le premier `received`. Ensuite, pendant le refactoring, un écart ne se résout **jamais** en ré-approuvant : c'est le code qui a tort.
-- Travailler sur une branche dédiée avec un working tree propre.
-- Le golden master est **temporaire** : il sera remplacé par de vrais tests unitaires métier une fois le code refactoré.
+- **Do not modify the production code** while building the golden master. The only exception: a minimal seam (injecting a `Clock`, extracting a static call) made through an automated IDE refactoring, **after the user's explicit agreement**. Check with `git diff --stat -- src/main` that nothing else changed.
+- **Never fix a suspicious behavior** (an NPE, an inconsistent value, a comment the code contradicts): freeze it as it is and list it in the report. Fixing it is a business decision, made later, in a separate commit.
+- **Deterministic output**: no `Object@1b6d3586`, no current date, no random UUID, no `HashMap` / `HashSet` order. The test must produce exactly the same file twice in a row.
+- **Read the first `received` file before approving it.** After that, during the refactoring, a difference is **never** resolved by approving again: the code is wrong.
+- Work on a dedicated branch with a clean working tree.
+- The golden master is **temporary**: it will be replaced by real business unit tests once the code is refactored.
 
-## Étape 1 — Cadrer
+## Step 1: Scope
 
-1. Identifier la **cible** : la classe, et ses méthodes publiques (ou appelées depuis l'extérieur). Choisir le **point d'appel le plus haut** qui reste rapide et isolable : une méthode publique couvre les méthodes privées qu'elle appelle. Si une méthode publique contient à elle seule une logique très combinatoire (ex. `extractPackSize` dans l'exemple), lui consacrer un test à part pour limiter l'explosion des combinaisons.
-2. Classer la cible :
-   - **code pur** (mapper, util statique, calcul) → section « Écrire le test » directement ;
-   - **service à dépendances** (repositories, clients HTTP, Kafka, horloge, `@Value`) → lire aussi `references/services-et-dependances.md`.
-3. Vérifier le build (`pom.xml`) :
-   - JUnit 5 présent ; Mockito si la cible a des dépendances ;
-   - ApprovalTests présent ? Sinon l'ajouter en scope `test` (voir `references/approvaltests.md`) ;
-   - JaCoCo / PIT déjà configurés ? Sinon le profil Maven `golden-master` de `references/verification-maven.md` sera ajouté à l'étape 5.
-4. `git status` propre, puis `git checkout -b test/golden-master-<cible-en-kebab>`.
+1. Identify the **target**: the class, and its public methods (or those called from outside). Pick the **highest call point** that stays fast and isolated: a public method covers the private methods it calls. When a public method holds a very combinatorial logic of its own (e.g. `extractPackSize` in the example), give it a test of its own to keep the number of combinations down.
+2. Classify the target:
+   - **pure code** (mapper, static utility, calculation): go straight to "Step 3: Write the test";
+   - **service with dependencies** (repositories, HTTP clients, Kafka, clock, `@Value`): also read `references/services-and-dependencies.md`.
+3. Check the build (`pom.xml`):
+   - JUnit 5 present; Mockito if the target has dependencies;
+   - ApprovalTests present? Otherwise add it in `test` scope (see `references/approvaltests.md`);
+   - JaCoCo / PIT already configured? Otherwise the `golden-master` Maven profile from `references/maven-verification.md` will be added at step 5.
+4. A clean `git status`, then `git checkout -b test/golden-master-<target-in-kebab-case>`.
 
-## Étape 2 — Cartographier les axes de variation
+## Step 2: Map the axes of variation
 
-Lire la cible **et toutes les méthodes qu'elle appelle sur ses entrées**, y compris les getters calculés du modèle (ex. `getCurrentActiveEdition()`, `getFirstSalePriceAsString()`) : ils cachent souvent des branches, des dates ou des formats.
+Read the target **and every method it calls on its inputs**, including the computed getters of the model (e.g. `getCurrentActiveEdition()`, `getFirstSalePriceAsString()`): they often hide branches, dates or formats.
 
-Chaque point de décision devient un axe :
+Each decision point becomes an axis:
 
-| Dans le code | Valeurs de l'axe |
+| In the code | Values of the axis |
 |---|---|
-| `x != null ? … : …`, `if (x == null)` | `null`, non null |
-| `enum`, `switch`, `X.name().equals(key)` | `null`, **chaque** valeur de l'enum, une valeur inconnue (`"UNKNOWN"`) |
-| comparaison numérique, seuil | juste en dessous, égal, juste au-dessus, `0`, négatif |
-| chaîne | `null`, `""`, valeur nominale, casse différente si `equals`/`fromName` |
-| collection, boucle | `null`, vide, un élément, plusieurs (dont doublons, ordre différent) |
-| exception d'une dépendance | réponse nominale, vide, exception |
+| `x != null ? … : …`, `if (x == null)` | `null`, not null |
+| `enum`, `switch`, `X.name().equals(key)` | `null`, **every** value of the enum, an unknown value (`"UNKNOWN"`) |
+| numeric comparison, threshold | just below, equal, just above, `0`, negative |
+| string | `null`, `""`, nominal value, different case if `equals` / `fromName` |
+| collection, loop | `null`, empty, one element, several (with duplicates, in a different order) |
+| exception from a dependency | nominal response, empty, exception |
 
-Le détail (choix des valeurs, objets imbriqués, maîtrise de l'explosion) est dans `references/axes-et-impression.md`.
+The details (choosing the values, nested objects, keeping the number of combinations down) are in `references/axes-and-printing.md`.
 
-Présenter la table des axes à l'utilisateur, avec le nombre de combinaisons, et lui demander s'il connaît **des cas métier réels** absents de la table (un format de données exotique, un produit particulier). Les ajouter comme valeurs d'axe.
+Show the table of axes to the user, with the number of combinations, and ask whether they know **real business cases** missing from it (an unusual data format, a particular product). Add them as axis values.
 
-Garder le total sous ~2 000 combinaisons par test. Au-delà : découper par sous-logique indépendante (un test par méthode publique, ou par axe qui ne se combine avec aucun autre).
+Keep the total under about 2,000 combinations per test. Beyond that, split along independent pieces of logic (one test per public method, or per axis that combines with no other).
 
-## Étape 3 — Écrire le test
+## Step 3: Write the test
 
-Créer `<Cible>GoldenMasterTest` dans le **même package** que la cible (accès aux méthodes package-private), sous `src/test/java`.
+Create `<Target>GoldenMasterTest` in the **same package** as the target (access to package-private methods), under `src/test/java`.
 
-Structure type (code pur) :
+Typical structure (pure code):
 
 ```java
 class PriceCalculatorGoldenMasterTest {
@@ -73,107 +73,107 @@ class PriceCalculatorGoldenMasterTest {
     void compute() {
         CombinationApprovals.verifyAllCombinations(
                 (customer, quantity, promo) -> print(PriceCalculator.compute(fixture(customer), quantity, promo)),
-                CustomerShape.values(),                 // axe 1 : forme de l'objet d'entrée
-                new Integer[]{null, -1, 0, 1, 10, 11},  // axe 2 : bornes autour du seuil 10
+                CustomerShape.values(),                 // axis 1: shape of the input object
+                new Integer[]{null, -1, 0, 1, 10, 11},  // axis 2: bounds around the threshold 10
                 new String[]{null, "", "SUMMER", "summer", "UNKNOWN"},
                 OPTIONS);
     }
 }
 ```
 
-Points clés :
+Key points:
 
-- Chaque valeur d'axe doit avoir un **`toString()` lisible** : `CombinationApprovals` l'imprime en tête de ligne. Pour les objets complexes, utiliser un `enum` de « formes » (`CustomerShape.SANS_ADRESSE`) et une fonction `fixture(shape)` qui construit l'objet.
-- Construire les entrées **comme en production** : builders, constructeurs ou désérialisation JSON du projet. Utiliser des **valeurs distinctes** pour chaque source possible d'une donnée (carton = 12, lot = 3, palette = 480) : la sortie révèle alors quelle branche a été prise.
-- **Imprimer toute la sortie** : tous les champs du résultat, l'exception (classe + message), l'état modifié des arguments, les interactions avec les dépendances. Un champ non imprimé est un champ non protégé.
-- Les exceptions levées par la cible sont capturées et imprimées par `CombinationApprovals` : ne pas les attraper soi-même.
+- Every axis value needs a **readable `toString()`**: `CombinationApprovals` prints it at the start of the line. For complex objects, use an `enum` of "shapes" (`CustomerShape.NO_ADDRESS`) and a `fixture(shape)` function that builds the object.
+- Build the inputs **as production does**: the project's builders, constructors or JSON deserialization. Use **distinct values** for each possible source of a piece of data (carton = 12, bundle = 3, pallet = 480): the output then shows which branch was taken.
+- **Print the whole output**: every field of the result, the exception (class and message), the modified state of the arguments, the interactions with the dependencies. A field not printed is a field not protected.
+- The exceptions thrown by the target are caught and printed by `CombinationApprovals`: do not catch them yourself.
 
-Exemple complet : `references/exemple-book-dto-mapper.md`.
+Full example: `references/example-book-dto-mapper.md`.
 
-## Étape 4 — Générer, relire, approuver
+## Step 4: Generate, read, approve
 
-1. Lancer le test seul :
+1. Run the test alone:
    ```bash
-   mvn -q test -Dtest='<Cible>GoldenMasterTest' -Dsurefire.failIfNoSpecifiedTests=false
+   mvn -q test -Dtest='<Target>GoldenMasterTest' -Dsurefire.failIfNoSpecifiedTests=false
    ```
-   Le premier passage **échoue** (pas encore de fichier approuvé) et crée `<Cible>GoldenMasterTest.<methode>.received.txt` à côté de la classe de test.
-2. **Relire** le fichier reçu (au moins un échantillon par axe) et vérifier :
-   - aucune trace non déterministe (`@` suivi d'un hash, date du jour, UUID) → sinon corriger l'impression ou ajouter un scrubber ;
-   - toutes les lignes ne donnent pas la même sortie → sinon un axe n'atteint pas le code (fixture mal construite) ;
-   - les exceptions sont celles attendues du code, pas des erreurs de la fixture du test.
-3. Vérifier le **déterminisme** : copier le `received`, relancer, comparer (`diff`). Aucune différence tolérée.
-4. Approuver : `mv X.received.txt X.approved.txt`, relancer → vert.
-5. Committer test + fichier approuvé : `git commit -m "test: golden master on <Cible>"`.
+   The first run **fails** (no approved file yet) and creates `<Target>GoldenMasterTest.<method>.received.txt` next to the test class.
+2. **Read** the received file (at least a sample per axis) and check:
+   - no non-deterministic trace (`@` followed by a hash, the current date, a UUID): otherwise fix the printing or add a scrubber;
+   - not every line gives the same output: otherwise an axis does not reach the code (a fixture built wrong);
+   - the exceptions are the ones the code throws, not errors in the test's fixture.
+3. Check **determinism**: copy the `received` file, run again, compare (`diff`). No difference allowed.
+4. Approve: `mv X.received.txt X.approved.txt`, run again: green.
+5. Commit the test and the approved file: `git commit -m "test: golden master on <Target>"`.
 
-## Étape 5 — Prouver que le filet tient
+## Step 5: Prove that the net holds
 
-Ajouter si besoin le profil Maven `golden-master` (`references/verification-maven.md`), puis boucler jusqu'à ce que les deux critères soient atteints.
+Add the `golden-master` Maven profile if needed (`references/maven-verification.md`), then loop until both criteria are met.
 
-`<dossier de cette skill>` est le dossier de ce fichier : par exemple `~/.claude/skills/golden-master` dans Claude Code, `~/.copilot/skills/golden-master` dans Copilot, `~/.config/opencode/skills/golden-master` dans opencode.
+`<this skill's folder>` is the folder of this file: for instance `~/.claude/skills/golden-master` in Claude Code, `~/.copilot/skills/golden-master` in Copilot, `~/.config/opencode/skills/golden-master` in opencode.
 
-### 5a. Couverture (JaCoCo) — objectif : 100 % des branches de la cible
+### 5a. Coverage (JaCoCo): 100% of the target's branches
 
 ```bash
-mvn -q -P golden-master test -Dtest='<Cible>GoldenMasterTest' -Dsurefire.failIfNoSpecifiedTests=false
-python3 <dossier de cette skill>/scripts/coverage_report.py target/site/jacoco/jacoco.xml <fqn.Cible> --src src/main/java
+mvn -q -P golden-master test -Dtest='<Target>GoldenMasterTest' -Dsurefire.failIfNoSpecifiedTests=false
+python3 <this skill's folder>/scripts/coverage_report.py target/site/jacoco/jacoco.xml <fqn.Target> --src src/main/java
 ```
 
-Pour chaque ligne ou branche manquée : ajouter la valeur d'axe qui l'atteint, ou justifier dans le rapport (code mort, branche impossible à atteindre sans modifier le code).
+For each missed line or branch: add the axis value that reaches it, or justify it in the report (dead code, a branch that cannot be reached without changing the code).
 
-### 5b. Mutation (PIT) — objectif : tous les mutants tués ou justifiés
+### 5b. Mutation (PIT): every mutant killed or justified
 
 ```bash
 mvn -q -P golden-master -Djacoco.skip=true test-compile org.pitest:pitest-maven:mutationCoverage \
-    -DtargetClasses='<fqn.Cible>*' -DtargetTests='<fqn.Cible>GoldenMasterTest'
-python3 <dossier de cette skill>/scripts/mutation_report.py target/pit-reports/mutations.xml <fqn.Cible> --src src/main/java
+    -DtargetClasses='<fqn.Target>*' -DtargetTests='<fqn.Target>GoldenMasterTest'
+python3 <this skill's folder>/scripts/mutation_report.py target/pit-reports/mutations.xml <fqn.Target> --src src/main/java
 ```
 
-Pour chaque mutant non tué :
+For each mutant not killed:
 
-| Statut | Cause habituelle | Action |
+| Status | Usual cause | Action |
 |---|---|---|
-| `NO_COVERAGE` | ligne jamais exécutée | revenir à 5a |
-| `SURVIVED` sur une condition (`<` → `<=`, négation) | valeur limite absente | ajouter la borne exacte à l'axe |
-| `SURVIVED` sur une valeur de retour ou un appel supprimé | sortie ou effet de bord non imprimé | compléter l'impression (champ, interaction, argument modifié) |
-| `SURVIVED` sans effet observable possible | mutant équivalent | justifier dans le rapport |
+| `NO_COVERAGE` | line never executed | back to 5a |
+| `SURVIVED` on a condition (`<` to `<=`, negation) | a bound value is missing | add the exact bound to the axis |
+| `SURVIVED` on a return value or a removed call | output or side effect not printed | complete the printing (field, interaction, modified argument) |
+| `SURVIVED` with no possible observable effect | equivalent mutant | justify it in the report |
 
-À chaque ajout d'entrées, le fichier approuvé change : c'est autorisé **uniquement** si `git diff --stat -- src/main` est vide. Relire le nouveau `received`, ré-approuver, committer.
+Each time inputs are added, the approved file changes: this is allowed **only** if `git diff --stat -- src/main` is empty. Read the new `received` file, approve it again, commit.
 
-## Étape 6 — Rapport et proposition de refactoring
+## Step 6: Report and refactoring proposal
 
-S'arrêter là et présenter à l'utilisateur :
+Stop here and present to the user:
 
 ```markdown
-## Golden master — <Cible>
-- Test : <Cible>GoldenMasterTest (N combinaisons, M méthodes de test) — branche test/golden-master-<cible>
-- Couverture : lignes X/Y, branches X/Y (manques justifiés : …)
-- Mutation : K/T mutants tués (survivants justifiés : …)
+## Golden master: <Target>
+- Test: <Target>GoldenMasterTest (N combinations, M test methods), branch test/golden-master-<target>
+- Coverage: lines X/Y, branches X/Y (justified gaps: …)
+- Mutation: K/T mutants killed (justified survivors: …)
 
-### Comportements suspects figés (non corrigés)
-| Cas | Comportement actuel | Pourquoi suspect |
+### Suspicious behaviors frozen (not fixed)
+| Case | Current behavior | Why it is suspicious |
 |---|---|---|
-| bookKey null | NullPointerException | levée avant le contrôle métier NoActiveEdition |
+| bookKey null | NullPointerException | thrown before the business check NoActiveEdition |
 
-### Proposition de refactoring (petits pas, golden master relancé après chacun)
+### Refactoring proposal (small steps, golden master run again after each one)
 1. …
 
-### Après le refactoring
-Écrire des tests unitaires métier lisibles (un comportement = un test nommé), corriger les comportements suspects validés,
-puis supprimer le golden master, son fichier approuvé et le profil Maven `golden-master`.
+### After the refactoring
+Write readable business unit tests (one behavior, one named test), fix the suspicious behaviors once validated,
+then delete the golden master, its approved file and the `golden-master` Maven profile.
 ```
 
-Ne pas commencer le refactoring sans demande explicite de l'utilisateur.
+Do not start the refactoring without an explicit request from the user.
 
-## Ressources
+## Resources
 
-| Fichier | Contenu |
+| File | Content |
 |---|---|
-| `references/approvaltests.md` | Dépendance, API (`verify`, `CombinationApprovals`, `Options`, reporters, scrubbers), emplacement des fichiers |
-| `references/axes-et-impression.md` | Trouver les axes, choisir les valeurs, maîtriser l'explosion, écrire une impression déterministe |
-| `references/services-et-dependances.md` | Services Spring : mocks enregistreurs, horloge, aléatoire, statiques, `@Value` |
-| `references/verification-maven.md` | Profil Maven JaCoCo + PIT, commandes, multi-module, pièges |
-| `references/exemple-book-dto-mapper.md` | Exemple complet sur `BookDtoMapperFromFeedUtils` |
-| `scripts/coverage_report.py` | Extrait de `jacoco.xml` les lignes et branches manquées de la cible |
-| `scripts/mutation_report.py` | Extrait de `mutations.xml` les mutants non tués de la cible |
+| `references/approvaltests.md` | Dependency, API (`verify`, `CombinationApprovals`, `Options`, reporters, scrubbers), where the files go |
+| `references/axes-and-printing.md` | Finding the axes, choosing the values, keeping the combinations down, writing a deterministic printout |
+| `references/services-and-dependencies.md` | Spring services: recording mocks, clock, randomness, static calls, `@Value` |
+| `references/maven-verification.md` | JaCoCo and PIT Maven profile, commands, multi-module projects, pitfalls |
+| `references/example-book-dto-mapper.md` | Full example on `BookDtoMapperFromFeedUtils` |
+| `scripts/coverage_report.py` | Extracts the target's missed lines and branches from `jacoco.xml` |
+| `scripts/mutation_report.py` | Extracts the target's mutants not killed from `mutations.xml` |
 
-Les scripts n'utilisent que la bibliothèque standard Python 3.8+. Après modification, lancer `python3 scripts/selftest.py`.
+The scripts use only the Python 3.8+ standard library. After changing them, run `python3 scripts/selftest.py`.

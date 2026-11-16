@@ -1,73 +1,71 @@
 ---
 name: adr-writer
-description: Rédige, complète, remplace et déprécie les ADR (Architecture Decision Records) dans tout projet, sans dépendre d'un agent spécialisé. Suit le template du projet s'il existe, sinon le modèle de la skill ; reprend le dossier et la langue des ADR existants, sinon les demande. À utiliser pour créer, écrire, mettre à jour, déprécier ou remplacer un ADR, ou quand l'utilisateur décrit une décision d'architecture à consigner.
+description: "Write, complete, supersede and deprecate ADRs (Architecture Decision Records) in any project, without a specialized agent: when a decision deserves an ADR; the project's conventions (folder, template, language and numbering of the existing ADRs, asked for when there are none); the default template; how to write each section (forces and their tensions, decision factors with thresholds, at least two options, consequences good and bad, how the decision is checked); the lifecycle (Draft, Accepted, Rejected, Deprecated, Supersedes) and corrections; the questions to ask. Load to create, write, update, deprecate or supersede an ADR, or when the user describes an architecture decision to record."
 ---
 
 # ADR Writer
 
-Un ADR (Architecture Decision Record) explique **pourquoi** l'équipe a fait un choix de conception : le contexte, les exigences qui ont guidé la décision, les options étudiées, la décision et ses conséquences. C'est un court fichier Markdown (une à deux pages), rangé dans le dépôt près du code concerné, pour que son historique suive celui du code.
+An ADR (Architecture Decision Record) explains **why** the team made a design choice: the context, the requirements that drove the decision, the options considered, the decision and its consequences. It is a short Markdown file (one or two pages), kept in the repository next to the code it concerns, so that its history follows the code's.
 
-**Le problème qu'il résout** (Nygard) : quand la raison d'une décision est perdue, celui qui arrive n'a que deux mauvais choix, l'accepter aveuglément ou la défaire aveuglément. « It's better to avoid either blind acceptance or blind reversal. » Les gros documents ne sont ni lus ni tenus à jour ; de petits documents, un par décision, ont une chance de l'être.
+**The problem it solves.** When the reason behind a decision is lost, whoever comes next has two bad options: keep it without knowing whether it still holds, or undo it without knowing what it protected. Either way, they guess. Large documents are neither read nor kept up to date; small ones, one per decision, stand a chance.
 
-**À quoi il sert** : intégrer un nouveau membre sans qu'il ait été là ; faire évoluer l'architecture sans rouvrir les mêmes débats, puisque les options écartées et leurs raisons sont écrites ; aligner les équipes voisines (architecture, sécurité) ; garder la trace des intentions à long terme (une refonte prévue, par exemple).
+**What it is for.** Onboarding someone who was not there; evolving the architecture without reopening the same debates, since the rejected options and their reasons are written down; aligning neighboring teams (architecture, security); keeping track of long-term intentions (a planned rewrite, for instance).
 
-**Pour qui on écrit** : un lecteur qui n'était pas là, nouvel arrivant ou équipe qui reprendra l'application. Nygard : l'ADR se lit comme une conversation avec un futur développeur.
+**Who it is written for.** A reader who was not there: a newcomer, or the team that will take the application over. Write it the way you would explain the decision to that developer face to face: in full sentences that carry the reasoning, not only the outcome.
 
-Sources : Michael Nygard, *Documenting Architecture Decisions* (2011, https://www.cognitect.com/blog/2011/11/15/documenting-architecture-decisions) ; Google Cloud, *Présentation des enregistrements de décision d'architecture* (https://docs.cloud.google.com/architecture/architecture-decision-records?hl=fr) ; Ford, Richards et al., *Software Architecture: The Hard Parts*, ch. 1.
+## Portability
 
-## Portabilité
+This skill works on its own, with no specialized agent, subagent, local configuration or required repository layout. In the project at hand, it discovers the existing conventions instead of assuming a path or a template; when the project or the information it needs is out of reach, it asks only for what is missing.
 
-Cette skill s'utilise directement, sans agent spécialisé, sous-agent, configuration locale ou structure de dépôt imposée. Dans le projet fourni, elle découvre les conventions existantes au lieu de supposer un chemin ou un template particulier ; si le projet ou les informations nécessaires ne sont pas accessibles, elle demande uniquement ce qui manque.
+## When to write an ADR
 
-## Quand écrire un ADR
+For an **architecturally significant** decision: one that affects the structure, the non-functional qualities, the dependencies, the interfaces or the way the system is built. In practice:
 
-Pour une décision **architecturalement significative** : elle touche la structure, les qualités non fonctionnelles, les dépendances, les interfaces ou les techniques de construction (Nygard). En pratique :
+- a technical problem with no existing basis for deciding (no recommended solution, standard procedure or precedent in the code);
+- a chosen solution documented nowhere the team can reach;
+- two or more options, whose reasoning must be kept.
 
-- un problème technique sans base de décision existante (pas de solution recommandée, de procédure standard ni de précédent dans le code) ;
-- une solution retenue qui n'est documentée nulle part d'accessible à l'équipe ;
-- deux options ou plus, dont il faut garder le raisonnement.
+Typically: choosing or changing an architecture style, splitting into bounded contexts, the boundary with an external system, choosing a product or its configuration (database, messaging, high availability), a build dependency that shapes the project, a deliberate exception to a rule, an architecture convention.
 
-Typiquement : choix ou changement de style d'architecture, découpage en contextes bornés, frontière avec un système externe, choix d'un produit ou de sa configuration (base, messagerie, haute disponibilité), dépendance de build structurante, exception assumée à une règle, convention d'architecture.
+Not for an implementation detail: tell the user instead of writing the ADR.
 
-Pas pour un détail d'implémentation : le dire à l'utilisateur plutôt que d'écrire l'ADR.
+## Project conventions
 
-## Conventions du projet
+Before writing, find the project root from the context at hand, then look for existing ADRs in the repository (for instance in `docs/architecture_decisions/`, `docs/adr/`, `doc/adr/`, `docs/decisions/`). These paths are examples, not prerequisites. If one of them exists, look for a template (`template.md` or equivalent).
 
-Avant d'écrire, repérer la racine du projet à partir du contexte fourni, puis chercher les ADR existants dans le dépôt (par exemple dans `docs/architecture_decisions/`, `docs/adr/`, `doc/adr/`, `docs/decisions/`). Ces chemins sont des exemples, pas des prérequis. Si l'un de ces chemins existe, chercher un template (`template.md` ou équivalent).
-
-| Point | Des ADR existent | Aucun ADR |
+| Point | ADRs exist | No ADR |
 |---|---|---|
-| **Dossier** | Celui des ADR existants | **Demander le chemin** à l'utilisateur. Si un template existe, proposer son dossier. |
-| **Modèle** | Le template du projet s'il existe, sinon le modèle ci-dessous | Idem |
-| **Langue** | Celle des ADR existants | **Demander** à l'utilisateur, ne pas supposer |
-| **Nom et numéro** | Le schéma des ADR existants, numéro suivant le plus haut | `NNN-<slug-kebab-case>.md`, à partir de `001` |
+| **Folder** | The existing ADRs' folder | **Ask the user for the path.** If a template exists, suggest its folder. |
+| **Template** | The project's template if there is one, otherwise the one below | Same |
+| **Language** | The existing ADRs' language | **Ask** the user, do not assume |
+| **Name and number** | The existing ADRs' scheme, the number after the highest | `NNN-<kebab-case-slug>.md`, starting at `001` |
 
-- Le template du projet fait foi : en respecter les sections, n'en ajouter aucune.
-- Les ADR existants donnent le ton et le niveau de détail : rester cohérent avec eux.
-- Un numéro n'est jamais réutilisé, même pour un ADR rejeté ou déprécié.
-- Si une autre skill se déclenche avec son propre format ou ses propres critères d'ADR (par exemple `domain-modeling`), suivre celle-ci et les ADR existants du projet.
+- The project's template prevails: keep its sections, add none.
+- The existing ADRs set the tone and the level of detail: stay consistent with them.
+- A number is never reused, even for a rejected or deprecated ADR.
+- If another skill triggers with its own ADR format or criteria (for instance `domain-modeling`), follow this one and the project's existing ADRs.
 
-## Modèle
+## Template
 
-À utiliser quand le projet n'a pas de template. Les textes entre `<…>` indiquent ce qu'on attend : ils se remplacent par le contenu, rédigé dans la langue retenue.
+For a project with no template. The text between `<…>` says what is expected: replace it with the content, written in the chosen language.
 
 ````markdown
-## JJ/MM/AAAA - <Titre de la décision>
+## YYYY-MM-DD - <Decision title>
 
 ### Status: Draft | Accepted | Rejected | Deprecated | Supersedes <NNN>
 
 ### Decision makers:
 
-- **<Rôle>**: <Nom>
+- **<Role>**: <Name>
 
 ### Context
 
-<En phrases : le problème à résoudre, les forces en jeu et leurs tensions, les contraintes, les parcours utilisateur critiques touchés. Ton neutre, des faits, pas la solution.>
+<In sentences: the problem to solve, the forces at play and the tensions between them, the constraints, the critical user journeys affected. Neutral tone, facts, not the solution.>
 
 ### Decision factors
 
-- <Exigence fonctionnelle ou non fonctionnelle, avec son seuil quand il existe (disponibilité, temps de réponse, testabilité…)>
-- <Critère de projet : délai, coût, complexité, compétences de l'équipe>
+- <Functional or non-functional requirement, with its threshold when there is one (availability, response time, testability…)>
+- <Project criterion: deadline, cost, complexity, team skills>
 
 ### Solutions considered
 
@@ -80,66 +78,66 @@ Avant d'écrire, repérer la racine du projet à partir du contexte fourni, puis
 
 ### Decision
 
-<À la voix active, en phrases complètes : « Nous… ». L'option retenue, sa justification et les choix clés qui en découlent.>
+<In the active voice, in complete sentences: "We…". The chosen option, why it wins, and the key choices that follow from it.>
 
 ### Consequences
 
-<En phrases : ce qui devient plus facile, plus difficile ou ne change pas ; les compromis acceptés ; ce qu'il faut faire ensuite. Comment la décision est vérifiée : le test d'architecture, ou la vérification manuelle.>
+<In sentences: what becomes easier, harder or stays the same; the trade-offs accepted; what must be done next. How the decision is checked: the architecture test, or the manual check.>
 ````
 
-## Règles de rédaction
+## Writing rules
 
-### Forme
+### Form
 
-- **Une seule décision par ADR.** Une même force peut revenir dans plusieurs ADR ; c'est la décision qui fait l'unité.
-- **Une à deux pages.** Au-delà, la décision est probablement double : proposer de la découper.
-- **Concis.** Pas de sur-explication. Un concept technique (par exemple « monolithe distribué ») s'explique en une phrase dans le contexte, pas dans une sous-section.
-- **Des phrases pour Context, Decision et Consequences** : une liste à puces perd le raisonnement. Les listes restent pour Decision factors et Solutions considered.
+- **One decision per ADR.** The same force can come back in several ADRs; the decision is what makes the unit.
+- **One or two pages.** Beyond that, there are probably two decisions: suggest splitting it.
+- **Concise.** No over-explaining. A technical concept (a "distributed monolith", say) is explained in one sentence in the context, not in a subsection.
+- **Sentences for Context, Decision and Consequences**: a bullet list loses the reasoning. Lists stay for Decision factors and Solutions considered.
 
-### Par section
+### Section by section
 
-- **Titre** : un groupe nominal court qui nomme la décision (« Annotations jMolecules pour marquer l'hexagone »), pas le problème.
-- **Status** : voir « Cycle de vie ».
-- **Decision makers** : les noms et rôles viennent de l'utilisateur. **Ne jamais les inventer** ; s'ils manquent, les demander.
-- **Context** : les forces en présence (techniques, organisationnelles, propres au projet) et les **tensions** entre elles, dites explicitement ; les contraintes ; les parcours utilisateur critiques touchés. Ton neutre et factuel. Pas de solution dans cette section.
-- **Decision factors** : les exigences fonctionnelles et non fonctionnelles qui pèsent sur le choix, **avec leur seuil** quand il existe, puis les critères de projet (délai, coût, complexité, compétences). Un mot vague (« scalable », « performant », « évolutif ») devient une question à l'utilisateur pour obtenir un seuil.
-- **Solutions considered** : **au moins deux options**, souvent dont « ne rien changer ». Pour chacune, avantages et inconvénients en phrases courtes. L'option retenue porte *(chosen)*. Les options écartées et leur raison sont ce qui évite de rouvrir le débat plus tard.
-- **Decision** : à la voix active, en phrases complètes (« Nous marquons les ports et les adapters avec… »). L'option retenue, **pourquoi** elle l'emporte au regard des critères, et les choix clés qui en découlent.
-- **Consequences** : toutes, **positives, négatives et neutres**, avec les compromis acceptés (*Hard Parts*, ch. 1) : ce qui est supprimé, simplifié ou rendu possible, mais aussi ce qui devient plus difficile ou plus coûteux. Ce qu'il faut faire ensuite. Les conséquences d'un ADR deviennent souvent le contexte des suivants.
+- **Title**: a short noun phrase that names the decision ("jMolecules annotations to mark the hexagon"), not the problem.
+- **Status**: see "Lifecycle".
+- **Decision makers**: names and roles come from the user. **Never invent them**; if they are missing, ask for them.
+- **Context**: the forces at play (technical, organizational, specific to the project) and the **tensions** between them, stated explicitly; the constraints; the critical user journeys affected. Neutral, factual tone. No solution in this section.
+- **Decision factors**: the functional and non-functional requirements that weigh on the choice, **with their threshold** when there is one, then the project criteria (deadline, cost, complexity, skills). A vague word ("scalable", "fast", "evolvable") becomes a question to the user, to get a threshold.
+- **Solutions considered**: **at least two options**, often including "change nothing". For each one, pros and cons in short sentences. The chosen option carries *(chosen)*. The rejected options and why they were rejected are what keeps the debate from being reopened later.
+- **Decision**: in the active voice, in complete sentences ("We mark ports and adapters with…"). The chosen option, **why** it wins against the criteria, and the key choices that follow from it.
+- **Consequences**: all of them, **positive, negative and neutral**, with the trade-offs accepted. Every architecture choice gives something up, and an ADR that lists only gains hides what they cost. What is removed, simplified or made possible, but also what becomes harder or more expensive. What must be done next. An ADR's consequences often become the context of the next ones.
 
-### Faire respecter la décision
+### Enforcing the decision
 
-Écrire une décision ne suffit pas (*Hard Parts*, ch. 1). Les Consequences disent **comment la décision est vérifiée** : de préférence un test d'architecture qui tourne en intégration continue (une *fitness function*, par exemple un test ArchUnit, nommé) ; sinon la vérification manuelle (revue, étape d'une checklist).
+A decision written down is not yet a decision the code follows: left unchecked, it erodes one change at a time. The Consequences say **how the decision is checked**: preferably an architecture test that runs in continuous integration (a *fitness function*, for instance an ArchUnit test, named); otherwise the manual check (a review, a checklist step).
 
-## Cycle de vie
+## Lifecycle
 
-| Statut | Sens | Ce qu'on peut modifier |
+| Status | Meaning | What can change |
 |---|---|---|
-| `Draft` | Décision en discussion, pas encore acceptée (le *proposed* de Nygard) | Tout le contenu |
-| `Accepted` | Accord explicite de l'utilisateur (ou des decision makers) | Seulement la ligne de statut |
-| `Rejected` | Proposée puis refusée : le fichier reste, savoir qu'une option a été refusée est utile | Rien |
-| `Deprecated` | Ne s'applique plus | Rien |
-| `Supersedes <NNN>` | Porté par le nouvel ADR qui remplace l'ADR `NNN` | Comme un ADR `Accepted` |
+| `Draft` | Under discussion, not yet accepted (other templates call it *Proposed*) | All the content |
+| `Accepted` | Explicit agreement of the user (or of the decision makers) | Only the status line |
+| `Rejected` | Proposed, then refused: the file stays, since knowing an option was refused is useful | Nothing |
+| `Deprecated` | No longer applies | Nothing |
+| `Supersedes <NNN>` | Carried by the new ADR that replaces ADR `NNN` | As for an `Accepted` ADR |
 
-- **`Draft` par défaut.** Passer à `Accepted` seulement après l'accord explicite de l'utilisateur, jamais par déduction.
-- **Un ADR accepté ne se réécrit pas et ne se supprime pas.** Savoir qu'une décision a été prise puis abandonnée reste utile. Deux façons d'en sortir :
-  - **Remplacer** : la décision change. Nouvel ADR avec le statut `Supersedes <NNN>`, dont le contexte dit ce qui a changé depuis l'ADR `NNN`. L'ancien passe à `Deprecated, superseded by <MMM>`.
-  - **Déprécier sans remplacer** : la décision ne s'applique plus et rien ne la remplace (composant retiré, contrainte disparue). L'ADR passe à `Deprecated (JJ/MM/AAAA): <raison en une phrase>`. Pas de nouvel ADR.
-- Dans les deux cas, seule la ligne de statut de l'ancien ADR change.
-- **Correction sur place, seulement sur accord.** Quand la décision tient mais qu'un fait, une conséquence ou une vérification d'un ADR accepté s'avère faux, demander à l'utilisateur, à chaque fois, s'il préfère un nouvel ADR qui le remplace ou une correction sur place, avec une recommandation qui tient compte de ce que le texte faux a déjà fait décider (une version diffusée, un autre ADR qui s'appuie dessus). Un accord donné pour un ADR ne vaut pas pour un autre. Une correction ne se fait qu'avec son accord explicite pour cet ADR ; la ligne de statut la date et dit ce qui a changé : `Accepted (corrigé le JJ/MM/AAAA : <ce qui change>)`. Une décision qui change passe toujours par un nouvel ADR.
-- **Décisions qui concernent d'autres équipes** : si l'équipe tient aussi un wiki ou un document partagé, proposer d'y reprendre la décision. L'ADR du dépôt reste la référence.
+- **`Draft` by default.** Move to `Accepted` only after the user's explicit agreement, never by inference.
+- **An accepted ADR is neither rewritten nor deleted.** Knowing that a decision was made and then abandoned stays useful. Two ways out:
+  - **Supersede**: the decision changes. A new ADR with the status `Supersedes <NNN>`, whose context says what changed since ADR `NNN`. The old one becomes `Deprecated, superseded by <MMM>`.
+  - **Deprecate without replacing**: the decision no longer applies and nothing replaces it (a component removed, a constraint gone). The ADR becomes `Deprecated (YYYY-MM-DD): <reason in one sentence>`. No new ADR.
+- In both cases, only the status line of the old ADR changes.
+- **Correction in place, only with agreement.** When the decision holds but a fact, a consequence or a check in an accepted ADR turns out to be wrong, ask the user, every time, whether they prefer a new ADR that supersedes it or a correction in place, with a recommendation that weighs what the wrong text has already led people to decide (a released version, another ADR that relies on it). Agreement given for one ADR does not hold for another. A correction is made only with their explicit agreement for that ADR; the status line dates it and says what changed: `Accepted (corrected on YYYY-MM-DD: <what changed>)`. A decision that changes always goes through a new ADR.
+- **Decisions that concern other teams**: if the team also keeps a wiki or a shared document, offer to copy the decision there. The ADR in the repository stays the reference.
 
-## Déroulé
+## Workflow
 
-1. **Conventions** : repérer les ADR existants, le template, la langue et le schéma de nommage (voir « Conventions du projet »).
-2. **Cadrer** : la décision mérite-t-elle un ADR ? Est-elle unique, ou faut-il la découper ? Lire les ADR liés : celui qu'elle remplacerait ou contredirait, ceux dont elle découle.
-3. **Rassembler l'information** :
-   - ce qu'il faut : date, decision makers, contexte et forces, critères avec leurs seuils, au moins deux options, option retenue et justification, conséquences, mode de vérification ; et si besoin le dossier et la langue ;
-   - ne pas demander ce que le code, la conversation ou les ADR existants disent déjà ;
-   - **trois à cinq questions par vague**, les plus structurantes d'abord, **ouvertes et neutres** (« Qu'est-ce qui doit pouvoir changer sans toucher au reste ? » plutôt que « Veux-tu une architecture hexagonale ? ») ;
-   - **proposer plutôt que demander** quand une hypothèse est raisonnable : « Je pars du principe que… Ça te va ? »
-4. **Écrire** le fichier en `Draft`, sauf si l'utilisateur a déjà explicitement accepté la décision.
-5. **Remplacement ou dépréciation** : mettre à jour la ligne de statut de l'ancien ADR.
-6. **Montrer** le résultat et proposer des ajustements. Signaler les hypothèses restées sans réponse et les champs à compléter (decision makers, seuils). Demander l'accord explicite avant de passer à `Accepted`.
+1. **Conventions**: find the existing ADRs, the template, the language and the naming scheme (see "Project conventions").
+2. **Frame**: does the decision deserve an ADR? Is it a single decision, or must it be split? Read the related ADRs: the one it would supersede or contradict, the ones it follows from.
+3. **Gather the information**:
+   - what is needed: the date, the decision makers, the context and the forces, the criteria with their thresholds, at least two options, the chosen option and its justification, the consequences, how the decision is checked; and if needed the folder and the language;
+   - do not ask for what the code, the conversation or the existing ADRs already say;
+   - **three to five questions per round**, the most structuring first, **open and neutral** ("What must be able to change without touching the rest?" rather than "Do you want a hexagonal architecture?");
+   - **propose rather than ask** when an assumption is reasonable: "I'm assuming that… Does that work for you?"
+4. **Write** the file as `Draft`, unless the user has already explicitly accepted the decision.
+5. **Supersede or deprecate**: update the status line of the old ADR.
+6. **Show** the result and offer adjustments. Point out the assumptions left unanswered and the fields still to fill in (decision makers, thresholds). Ask for explicit agreement before moving to `Accepted`.
 
-Si le mode d'exécution ne permet pas de poser des questions à l'utilisateur, présenter les questions et hypothèses non résolues dans la réponse et laisser l'ADR en `Draft`.
+If the execution mode does not allow asking the user questions, list the unresolved questions and assumptions in the answer and leave the ADR as `Draft`.

@@ -1,54 +1,54 @@
-# Pousser le backlog dans Jira (MCP Atlassian)
+# Pushing the backlog to Jira (Atlassian MCP)
 
-Le backlog local reste la source de vérité : Jira en reçoit une copie, à la demande, **jamais sans l'accord explicite de l'utilisateur sur ce qui va être écrit**. Rien ne descend de Jira vers le backlog sans son accord non plus.
+The local backlog stays the source of truth: Jira receives a copy, on request, **never without the user's explicit agreement on what is going to be written**. Nothing comes down from Jira into the backlog without their agreement either.
 
-## Outils
+## Tools
 
-Ceux du MCP officiel Atlassian, préfixés selon le client (`mcp__atlassian__…`, `mcp__claude_ai_Atlassian__…`) : `getAccessibleAtlassianResources`, `getVisibleJiraProjects`, `getJiraProjectIssueTypesMetadata`, `getJiraIssue`, `searchJiraIssuesUsingJql`, `createJiraIssue`, `editJiraIssue`, `getTransitionsForJiraIssue`, `transitionJiraIssue`, `addCommentToJiraIssue`, `getIssueLinkTypes`, `createIssueLink`. Un autre MCP Jira (`jira_*`) se mappe de la même façon. Les noms et paramètres exacts sont ceux que donne le schéma de l'outil : s'y fier plutôt qu'à cette page.
+Those of the official Atlassian MCP, prefixed according to the client (`mcp__atlassian__…`, `mcp__claude_ai_Atlassian__…`): `getAccessibleAtlassianResources`, `getVisibleJiraProjects`, `getJiraProjectIssueTypesMetadata`, `getJiraIssue`, `searchJiraIssuesUsingJql`, `createJiraIssue`, `editJiraIssue`, `getTransitionsForJiraIssue`, `transitionJiraIssue`, `addCommentToJiraIssue`, `getIssueLinkTypes`, `createIssueLink`. Another Jira MCP (`jira_*`) maps the same way. The exact names and parameters are those of the tool's schema: rely on it rather than on this page.
 
-Sans outil Jira dans la session : le dire en une ligne et proposer le contenu prêt à copier.
+Without a Jira tool in the session: say so in one line and offer the content ready to copy.
 
-## Première synchronisation : la correspondance
+## First sync: the mapping
 
-À faire une fois par dépôt, puis gardé dans `docs/backlog/config.yml` (une ligne `clé: valeur` chacune) :
+Done once per repo, then kept in `docs/backlog/config.yml` (one `key: value` line each):
 
-1. **Site** : `getAccessibleAtlassianResources` donne le `cloudId`. S'il y a plusieurs sites, demander lequel. → `jira_site: mon-equipe.atlassian.net`
-2. **Projet** : demander à l'utilisateur (au besoin, lister avec `getVisibleJiraProjects`). → `jira_projet: BOUTIQUE`
-3. **Types** : `getJiraProjectIssueTypesMetadata`, puis faire correspondre chaque type local à un type du projet. Sans type « Spike », proposer « Tâche » / « Task ». → `jira_type_epic: Epic`, `jira_type_story: Story`, `jira_type_tache: Task`, `jira_type_spike: Task`, `jira_type_bug: Bug`
-4. **Statuts** : le workflow n'est visible qu'à partir d'un ticket. Après la première création, `getTransitionsForJiraIssue` donne les statuts atteignables ; proposer une correspondance, plusieurs statuts locaux pouvant tomber sur le même statut Jira. → `jira_statut_a-cadrer: Backlog`, `jira_statut_en-cadrage: Backlog`, `jira_statut_pret: Selected for Development`, `jira_statut_en-cours: In Progress`, `jira_statut_en-revue: In Review`, `jira_statut_termine: Done`, `jira_statut_abandonne: Done`
+1. **Site**: `getAccessibleAtlassianResources` gives the `cloudId`. If there are several sites, ask which one. → `jira_site: my-team.atlassian.net`
+2. **Project**: ask the user (if needed, list with `getVisibleJiraProjects`). → `jira_project: BOUTIQUE`
+3. **Types**: `getJiraProjectIssueTypesMetadata`, then map each local type to a type of the project. Without a "Spike" type, propose "Task" (or its name in the site's language). → `jira_type_epic: Epic`, `jira_type_story: Story`, `jira_type_task: Task`, `jira_type_spike: Task`, `jira_type_bug: Bug`
+4. **Statuses**: the workflow is only visible from a ticket. After the first creation, `getTransitionsForJiraIssue` gives the reachable statuses; propose a mapping, several local statuses being allowed to land on the same Jira status. → `jira_status_to-refine: Backlog`, `jira_status_refining: Backlog`, `jira_status_ready: Selected for Development`, `jira_status_in-progress: In Progress`, `jira_status_in-review: In Review`, `jira_status_done: Done`, `jira_status_abandoned: Done`
 
-Faire valider la correspondance par l'utilisateur avant de l'écrire dans `config.yml`.
+Have the user validate the mapping before writing it in `config.yml`.
 
-## Pousser
+## Pushing
 
-1. `kanban.py a-pousser --json` : les tickets à créer (sans clé Jira) et à mettre à jour (modifiés depuis la dernière synchro : champs, texte hors Suivi, ou fiche). Un ticket abandonné qui n'a jamais été poussé ne l'est pas.
-2. **Préparer le contenu** de chacun (modèle ci-dessous) : résumé = `titre` ; type et statut selon la correspondance ; parent = la clé Jira de son epic (l'epic se pousse d'abord).
-3. **Le montrer à l'utilisateur et attendre son accord** : la liste (création ou mise à jour, clé, titre, statut), puis le contenu complet de chaque ticket créé et ce qui change pour chaque ticket mis à jour. Pour un premier envoi de nombreux tickets, montrer un ticket complet en exemple et la liste, et demander l'accord sur le lot.
-4. **Avant de mettre à jour un ticket existant**, le relire (`getJiraIssue`). S'il a été modifié dans Jira après `synchro_jira` (description, statut, nouveaux commentaires), montrer la différence et demander : reprendre dans le backlog (une note `**Précision**` datée, source « Jira, commentaire de … »), ou écraser. Ne jamais écraser en silence.
-5. **Créer** (`createJiraIssue`) les epics d'abord, puis les autres tickets par clé croissante. Si le statut voulu n'est pas le statut initial, `getTransitionsForJiraIssue` puis `transitionJiraIssue`. Un champ obligatoire inconnu (ex. « Epic Name ») : lire le message d'erreur et demander la valeur.
-6. **Mettre à jour** (`editJiraIssue`) : résumé et description ; la transition si le statut a changé.
-7. **Liens** : pour `bloque_par`, une fois les deux tickets dans Jira, `createIssueLink` du type « Blocks » (le bloquant « blocks » le bloqué). Ne pas recréer un lien qui existe.
-8. **Après chaque ticket réussi** : `kanban.py synchro <CLE> --jira <CLE-JIRA>`. Un échec n'est pas synchronisé : le dire, avec le message de Jira.
-9. Terminer par `kanban.py a-pousser` : la liste doit être vide, sauf échecs annoncés.
+1. `kanban.py to-push --json`: the tickets to create (without a Jira key) and to update (changed since the last sync: fields, text outside History, or spec). An abandoned ticket that was never pushed is not pushed.
+2. **Prepare the content** of each one (template below): summary = `title`; type and status according to the mapping; parent = the Jira key of its epic (the epic is pushed first).
+3. **Show it to the user and wait for their agreement**: the list (creation or update, key, title, status), then the full content of each created ticket and what changes for each updated ticket. For a first push of many tickets, show one full ticket as an example and the list, and ask for agreement on the batch.
+4. **Before updating an existing ticket**, read it again (`getJiraIssue`). If it was changed in Jira after `jira_sync` (description, status, new comments), show the difference and ask: take it back into the backlog (a dated `**Clarification**` note, source "Jira, comment by …"), or overwrite. Never overwrite silently.
+5. **Create** (`createJiraIssue`) the epics first, then the other tickets by increasing key. If the wanted status is not the initial status, `getTransitionsForJiraIssue` then `transitionJiraIssue`. An unknown required field (e.g. "Epic Name"): read the error message and ask for the value.
+6. **Update** (`editJiraIssue`): summary and description; the transition if the status changed.
+7. **Links**: for `blocked_by`, once both tickets are in Jira, `createIssueLink` of type "Blocks" (the blocking one "blocks" the blocked one). Do not recreate a link that exists.
+8. **After each successful ticket**: `kanban.py sync <KEY> --jira <JIRA-KEY>`. A failure is not synced: say so, with Jira's message.
+9. Finish with `kanban.py to-push`: the list must be empty, except for announced failures.
 
-## Modèle de description
+## Description template
 
-En Markdown (le MCP le convertit) :
+In Markdown (the MCP converts it):
 
 ```markdown
-<Résumé du ticket>
+<The ticket's Summary>
 
-<Si le ticket a une fiche : ses sections Pourquoi, Pour qui et Périmètre, puis ses scénarios Gherkin dans un bloc ```gherkin.>
+<If the ticket has a spec: its Why, For whom and Scope sections, then its Gherkin scenarios in a ```gherkin block.>
 
-## Notes de cadrage (brouillon)
-<Les notes du ticket, telles quelles.>
+## Refinement notes (draft)
+<The ticket's notes, as they are.>
 
 ---
-Copie du backlog local de <projet> : ticket <CLE> (docs/backlog/tickets/<fichier>). Modifier le ticket local, pas celui-ci : il est réécrit à chaque synchronisation.
+Copy of the local backlog of <project>: ticket <KEY> (docs/backlog/tickets/<file>). Edit the local ticket, not this one: it is rewritten at every sync.
 ```
 
-Le Suivi ne part pas : Jira a son propre historique. Une description trop longue pour Jira (plus de 30 000 caractères environ) garde le Résumé, Pourquoi, Pour qui, Périmètre et les titres des scénarios, avec le chemin de la fiche.
+The History does not go: Jira has its own history. A description too long for Jira (more than about 30,000 characters) keeps the Summary, Why, For whom, Scope and the titles of the scenarios, with the path of the spec.
 
-## Partir d'un ticket Jira
+## Starting from a Jira ticket
 
-Une clé Jira citée par l'utilisateur : la chercher d'abord dans le backlog (`grep -l "^jira: ABC-12" docs/backlog/tickets/*.md`). Absente : lire le ticket (`getJiraIssue`, avec ses commentaires et liens), proposer de le reprendre dans le backlog (`kanban.py nouveau`, type et statut d'après la correspondance, sa description dans le Résumé, ses commentaires utiles en notes avec leur source), puis `kanban.py synchro` pour lier les deux. Sa description dans Jira sera réécrite au format du modèle à la première poussée qui suivra une modification du ticket local : le dire.
+A Jira key cited by the user: look for it first in the backlog (`grep -l "^jira: ABC-12" docs/backlog/tickets/*.md`). Missing: read the ticket (`getJiraIssue`, with its comments and links), propose to take it into the backlog (`kanban.py new`, type and status according to the mapping, its description in the Summary, its useful comments as notes with their source), then `kanban.py sync` to link the two. Its description in Jira will be rewritten in the template's format at the first push that follows a change of the local ticket: say so.

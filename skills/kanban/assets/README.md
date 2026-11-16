@@ -1,95 +1,95 @@
-# Backlog de {projet}
+# {project} backlog
 
-Ce dossier est le **backlog local** de {projet} : la source de vérité des tickets (epics, stories, tâches, spikes, bugs), de leur ordre, de leur statut et de leurs notes de cadrage. Il est versionné avec le code. Jira, s'il est branché, n'en est qu'une copie : on modifie les tickets ici, jamais là-bas.
+This folder is the **local backlog** of {project}: the source of truth for the tickets (epics, stories, tasks, spikes, bugs), their order, their status and their refinement notes. It is versioned with the code. Jira, if connected, is only a copy: tickets are changed here, never there.
 
-## Voir le tableau
+## Seeing the board
 
 ```sh
-alias kanban='python3 -I <dossier de la skill kanban>/scripts/kanban.py'   # à mettre dans ~/.zshrc
-# <dossier de la skill kanban> : par exemple ~/.claude/skills/kanban, ~/.copilot/skills/kanban ou ~/.config/opencode/skills/kanban
-kanban          # le tableau dans le terminal
-kanban serve    # dans le navigateur, sur 127.0.0.1:8765, rechargé à chaque changement
+alias kanban='python3 -I <kanban skill directory>/scripts/kanban.py'   # to put in ~/.zshrc
+# <kanban skill directory>: for example ~/.claude/skills/kanban, ~/.copilot/skills/kanban or ~/.config/opencode/skills/kanban
+kanban          # the board in the terminal
+kanban serve    # in the browser, on 127.0.0.1:8765, reloaded at every change
 ```
 
-## Lire la documentation
+## Reading the documentation
 
-`kanban serve` sert aussi, en lecture seule, la documentation du projet sur `http://127.0.0.1:8765/doc/` (lien « Documentation » en tête du tableau) : les fiches de spécification et leurs scénarios Gherkin, et la documentation écrite pour les humains. Les pages se rechargent quand leurs fichiers changent ; le champ `fiche` d'un ticket mène à la page de sa fiche.
+`kanban serve` also serves, read-only, the project documentation at `http://127.0.0.1:8765/doc/` (the "Documentation" link at the top of the board): the specs and their Gherkin scenarios, and the documentation written for humans. The pages reload when their files change; a ticket's `spec` field leads to the page of its spec.
 
-Les dossiers servis se règlent dans `config.yml`, depuis la racine du dépôt :
+The served directories are set in `config.yml`, from the repo root:
 
 ```yaml
-documentation: [docs/specs, docs/documentation]   # la valeur par défaut, sans la clé
+documentation: [docs/specs, docs/documentation]   # the default value, without the key
 ```
 
-Seuls les fichiers `.md` de ces dossiers sont servis. Un dossier absent n'est pas une erreur. `INDEX.md` ou `README.md` est le point d'entrée de son dossier, et un lien relatif entre deux fichiers (`[Glossaire](glossaire.md)`) mène d'une page à l'autre.
+Only the `.md` files of these directories are served. A missing directory is not an error. `INDEX.md` or `README.md` is the entry point of its directory, and a relative link between two files (`[Glossary](glossary.md)`) leads from one page to the other.
 
-## Colonnes
+## Columns
 
-| Statut | Colonne | Le ticket… |
+| Status | Column | The ticket… |
 |---|---|---|
-| `a-cadrer` | À cadrer | a un titre, un résumé et des notes de cadrage brouillonnes |
-| `en-cadrage` | En cadrage | a une fiche en cours d'écriture |
-| `pret` | Prêt | a une fiche validée |
-| `en-cours` | En cours | est en développement |
-| `en-revue` | En revue | est livré, en revue d'acceptation et d'architecture |
-| `termine` | Terminé | est accepté |
-| `abandonne` | masquée | est retiré ; la raison est dans son suivi. Un ticket ne se supprime pas. |
+| `to-refine` | To refine | has a title, a summary and draft refinement notes |
+| `refining` | Refining | has a spec being written |
+| `ready` | Ready | has a validated spec |
+| `in-progress` | In progress | is in development |
+| `in-review` | In review | is delivered, in acceptance and architecture review |
+| `done` | Done | is accepted |
+| `abandoned` | hidden | is withdrawn; the reason is in its history. A ticket is never deleted. |
 
-## Un ticket
+## A ticket
 
-Un fichier par ticket : `tickets/{prefixe}-<n>-<titre>.md`. Une clé n'est jamais réutilisée.
+One file per ticket: `tickets/{prefix}-<n>-<title>.md`. A key is never reused.
 
 ```markdown
 ---
-cle: {prefixe}-4
-titre: Zone et vacances
-type: story              # epic | story | tache | spike | bug
-statut: a-cadrer
-epic: {prefixe}-1        # facultatif : l'epic qui le contient
-rang: 4                  # facultatif : son ordre dans l'epic (la fonctionnalité 4)
-fiche: docs/specs/x.md   # dès qu'il est cadré
-bloque_par: [{prefixe}-2, {prefixe}-3]   # facultatif
-jira: ABC-12             # posé par la synchro Jira, comme synchro_jira et empreinte_jira
-cree: 2026-10-22
+key: {prefix}-4
+title: Zone and holidays
+type: story              # epic | story | task | spike | bug
+status: to-refine
+epic: {prefix}-1        # optional: the epic that contains it
+rank: 4                  # optional: its order in the epic (slice 4)
+spec: docs/specs/x.md    # as soon as it is refined
+blocked_by: [{prefix}-2, {prefix}-3]   # optional
+jira: ABC-12             # set by the Jira sync, like jira_sync and jira_fingerprint
+created: 2026-10-22
 ---
 
-# {prefixe}-4 · Zone et vacances
+# {prefix}-4 · Zone and holidays
 
-## Résumé
-Le besoin en une ou deux phrases.
+## Summary
+The need in one or two sentences.
 
-## Notes de cadrage
-Les questions et les réponses qui le concernent, au fil de l'eau (ci-dessous).
+## Refinement notes
+The questions and the answers that concern it, as they come (below).
 
-## Suivi
-- 2026-10-22 · créé
+## History
+- 2026-10-22 · created
 ```
 
-## Notes de cadrage
+## Refinement notes
 
-La matière brute du cadrage, en attendant qu'on arrive sur le ticket. Une note par échange, la plus récente à la fin :
+The raw material for refining, until the ticket's turn comes. One note per exchange, the most recent last:
 
 ```markdown
-### 2026-10-22 · pendant {prefixe}-2, lot 3, Q4 · posée par le product-owner
+### 2026-10-22 · during {prefix}-2, batch 3, Q4 · asked by the product-owner
 **Question**
-> La question telle qu'elle a été posée, avec ses options et la recommandation si la réponse y renvoie.
+> The question as it was asked, with its options and the recommendation if the answer refers to it.
 
-**Réponse**
-> La réponse, mot pour mot.
+**Answer**
+> The answer, word for word.
 
-Mémoire : R-024
+Memory: R-024
 ```
 
-- Mot pour mot : on ne reformule ni la question ni la réponse. Une précision donnée sans question s'écrit `**Précision**`.
-- On ajoute, on ne réécrit pas : une note se corrige par une note suivante.
-- On ne cadre pas : pas de règle, de scénario ni de question de plus. On cadrera en arrivant sur le ticket.
+- Word for word: neither the question nor the answer is rephrased. A clarification given without a question is written `**Clarification**`.
+- Add, do not rewrite: a note is corrected by a later note.
+- Do not refine: no rule, no scenario, no further question. The ticket gets refined when its turn comes.
 
-## Commandes
+## Commands
 
 ```sh
-kanban nouveau "Titre" --type story --epic {prefixe}-1 --rang 5 --resume "Le besoin en une phrase."
-kanban deplacer {prefixe}-4 en-cours --motif "fiche validée"
-kanban verifier                       # après toute modification à la main
-kanban a-pousser                      # ce qui reste à créer ou à mettre à jour dans Jira
-kanban synchro {prefixe}-4 --jira ABC-12   # après avoir poussé le ticket dans Jira
+kanban new "Title" --type story --epic {prefix}-1 --rank 5 --summary "The need in one sentence."
+kanban move {prefix}-4 in-progress --reason "spec validated"
+kanban check                          # after any change by hand
+kanban to-push                        # what is left to create or update in Jira
+kanban sync {prefix}-4 --jira ABC-12  # after pushing the ticket to Jira
 ```

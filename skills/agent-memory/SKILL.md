@@ -1,6 +1,6 @@
 ---
 name: agent-memory
-description: "Protocol for the memory an AI agent keeps in a project (for instance docs/ia/agent-name/): an index that says when to read each file; one entry per heading, whose title states the fact; three statuses (confirmed, verified, deduced), what each one settles, and how a deduced entry gets validated (by the user for an intent, by running it for a fact about the code); a source that says what makes the entry true today; dated quotes of what an entry relies on, code included, references only to a numbered item; an entry rewritten rather than appended to; dated snapshots; decisions, questions and debt; bootstrapping with the project's consent; pruning before splitting; handing entries over to another agent; reporting changes, and the separate commit. Load at the start of any task that relies on the memory, and before bootstrapping it, writing or correcting an entry, reorganizing it, or handing entries over to another agent."
+description: "Protocol for the memory an AI agent keeps in a project (for instance docs/ai/agent-name/): an index that says when to read each file; one entry per heading, whose title states the fact; three statuses (confirmed, verified, deduced), what each one settles, and how a deduced entry gets validated (by the user for an intent, by running it for a fact about the code); a source that says what makes the entry true today; dated quotes of what an entry relies on, code included, references only to a numbered item; an entry rewritten rather than appended to; dated snapshots; decisions, questions and debt; bootstrapping with the project's consent; pruning before splitting; handing entries over to another agent; reporting changes, and the separate commit. Load at the start of any task that relies on the memory, and before bootstrapping it, writing or correcting an entry, reorganizing it, or handing entries over to another agent."
 ---
 
 # An agent's memory in a project
@@ -11,7 +11,7 @@ A memory spares the agent from rediscovering, at each task, what it has already 
 
 The agent that relies on this skill states, in its section on memory:
 
-- **its folder** in the project (for instance `docs/ia/<agent>/`);
+- **its folder** in the project (for instance `docs/ai/<agent>/`);
 - **the table of its files**: what each one holds, the kind of its entries (`references/formats.md`) and the prefix of its IDs;
 - **the names of its statuses** and of its report headings, in its own language;
 - **its bootstrapping sources**, and what, in its role, goes into its memory or stays out.
@@ -83,7 +83,7 @@ A quote freezes what the entry relies on at the date it was written; a reference
 ## Writing
 
 - **Capture a durable fact as soon as it appears**: a user answer that settles a point, a command that works after a failure, what a task taught. The agent writes without asking: each entry carries its status and its source, and the diff is reviewed. Only an explicit answer from the user, or a document they validated, makes an entry confirmed.
-- **What goes in**: what will hold for the next task in this project. **What stays out**: the detail of a task, what another document already holds (quote only the passage the entry relies on: see "Quoting rather than referring"), the rules of the agent's role (they go through its improvement journal into its file), what belongs to another agent's role.
+- **What goes in**: what will hold for the next task in this project. **What stays out**: the detail of a task, what another document already holds (quote only the passage the entry relies on: see "Quoting rather than referring"), the rules of the agent's role (they hold for every project and belong in the agent's file), what belongs to another agent's role.
 - **Shareable**: the memory is versioned with the project. Nothing that depends on one machine (a personal path, a command for one system without its equivalent for the others); every path written from the repository root; no secret.
 - **Changing an entry means rereading it whole and rewriting it** so that it states the present: no "Addendum of…", "Corrected on…" or "Previously…" lines, which leave the old version next to the new one, sometimes contradicting it. Edit the entry in place rather than rewriting the file from an earlier read.
 
@@ -106,4 +106,4 @@ When a responsibility moves from one agent to another (end-to-end tests, from th
 
 - **At the end of the response**: the entries added, changed or removed, each with its file, its ID and one line.
 - **In delegated mode**: in a section of the response named after the memory ("Business memory", "QA memory"… in the agent's language), before the status line if the agent ends with one. The deduced intents are grouped under a "To validate" heading, each with the question to ask, so that the launching agent submits them to the user.
-- **Commit**: memory changes go in a separate commit (`docs(ia): …`), made by the agent that commits in this project, and only when commits are allowed.
+- **Commit**: memory changes go in a separate commit (for instance `docs(ai): …`), made by the agent that commits in this project, and only when commits are allowed.

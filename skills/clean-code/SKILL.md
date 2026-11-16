@@ -15,6 +15,7 @@ Code that works, reveals its intent, and that the next developer can change with
 | At green: the least code that makes the test pass, even if imperfect (*fake it*) | Nothing more: the duplication or clumsiness it leaves is dealt with at refactor, right after |
 | At refactor, tests green | "Simple Design" in its order; to get there, all the other sections, and the "Code smells" with the refactoring that fixes each, in small steps, tests rerun after every step |
 | To clean up or restructure code outside a TDD cycle | The same, only under green tests; code without tests is secured first (skill `legacy-code`, if installed) |
+| Before committing or handing over a diff you wrote | "Before delivering your own code" |
 | To review code | "Code review" |
 
 ## Simple Design, in priority order

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Résume les mutants PIT d'une classe cible (et de ses classes internes / lambdas).
+"""Summarize the PIT mutants of a target class (and of its inner classes and lambdas).
 
-Usage :
-    python3 mutation_report.py target/pit-reports/mutations.xml com.exemple.Cible [--src src/main/java]
+Usage:
+    python3 mutation_report.py target/pit-reports/mutations.xml com.example.Target [--src src/main/java]
 
-Affiche le score de mutation, puis chaque mutant non tué (SURVIVED, NO_COVERAGE),
-trié par ligne, avec le code source si --src est fourni.
-Code de sortie : 0 si aucun mutant ne survit, 1 sinon, 2 en cas d'erreur.
+Prints the mutation score, then every mutant not killed (SURVIVED, NO_COVERAGE),
+sorted by line, with the source code when --src is given.
+Exit code: 0 if no mutant survives, 1 otherwise, 2 on error.
 """
 import argparse
 import os
@@ -18,8 +18,8 @@ KILLED = {"KILLED", "TIMED_OUT", "MEMORY_ERROR", "RUN_ERROR"}
 NOT_KILLED = {"SURVIVED", "NO_COVERAGE"}
 
 HINTS = {
-    "NO_COVERAGE": "ligne jamais exécutée : ajouter une valeur d'axe (voir coverage_report.py)",
-    "SURVIVED": "exécutée mais non détectée : borne manquante, ou sortie / effet de bord non imprimé",
+    "NO_COVERAGE": "line never executed: add an axis value (see coverage_report.py)",
+    "SURVIVED": "executed but not detected: a missing bound, or an output or side effect not printed",
 }
 
 
@@ -46,12 +46,12 @@ def read_source(src_root, target, filename):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mutations_xml")
-    parser.add_argument("target", help="nom complet de la classe cible, ex. com.exemple.Cible")
-    parser.add_argument("--src", help="racine des sources de production, ex. src/main/java")
+    parser.add_argument("target", help="fully qualified name of the target class, e.g. com.example.Target")
+    parser.add_argument("--src", help="root of the production sources, e.g. src/main/java")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.mutations_xml):
-        print("Fichier introuvable : " + args.mutations_xml, file=sys.stderr)
+        print("File not found: " + args.mutations_xml, file=sys.stderr)
         return 2
 
     root = ET.parse(args.mutations_xml).getroot()
@@ -83,7 +83,7 @@ def main(argv=None):
             })
 
     if not statuses:
-        print("Aucun mutant pour {} : vérifier -DtargetClasses et que le rapport XML est activé.".format(args.target),
+        print("No mutant for {}: check -DtargetClasses and that the XML report is enabled.".format(args.target),
               file=sys.stderr)
         return 2
 
@@ -91,12 +91,12 @@ def main(argv=None):
     relevant = killed + sum(count for status, count in statuses.items() if status in NOT_KILLED)
     score = 100.0 * killed / relevant if relevant else 100.0
 
-    print("Mutation de " + args.target)
-    print("  Score : {}/{} tués ({:.1f} %)".format(killed, relevant, score))
-    print("  Détail : " + ", ".join("{}={}".format(s, c) for s, c in sorted(statuses.items())))
+    print("Mutation of " + args.target)
+    print("  Score: {}/{} killed ({:.1f}%)".format(killed, relevant, score))
+    print("  Breakdown: " + ", ".join("{}={}".format(s, c) for s, c in sorted(statuses.items())))
 
     if remaining:
-        print("\nMutants à tuer ou à justifier :")
+        print("\nMutants to kill or justify:")
         for status in sorted({m["status"] for m in remaining}):
             print("\n  {} — {}".format(status, HINTS[status]))
             for m in sorted((m for m in remaining if m["status"] == status), key=lambda m: (m["file"], m["line"])):
@@ -104,7 +104,7 @@ def main(argv=None):
                 if m["code"]:
                     print("          > " + m["code"])
 
-    print("\nObjectif aucun mutant survivant : " + ("ATTEINT" if not remaining else "NON ATTEINT"))
+    print("\nGoal of no surviving mutant: " + ("MET" if not remaining else "NOT MET"))
     return 0 if not remaining else 1
 
 

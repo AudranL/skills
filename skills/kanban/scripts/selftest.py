@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Tests de kanban.py (unittest, bibliothèque standard seulement).
+"""Tests of kanban: scripts/kanban.py, scripts/kanban_lib/ and the templates of assets/
+(unittest, standard library).
 
-Usage : python3 -I -B scripts/selftest.py   (à relancer après toute modification de kanban.py)
+Usage, from the skill directory, after any change to scripts/ or assets/:
+  python3 -I -B -W error scripts/selftest.py   (also with /usr/bin/python3, 3.9)
 """
 import contextlib
-import importlib.util
+import http.client
 import io
 import re
 import socket
@@ -17,689 +19,740 @@ import urllib.request
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().with_name("kanban.py")
+# Like kanban.py, run with "python3 -I": its directory is not in sys.path.
+sys.path.insert(0, str(SCRIPT.parent))
+
+from kanban_lib.backlog import Backlog, documentation_directories
+from kanban_lib.commands import main
+from kanban_lib.documentation import Documentation, Page
+from kanban_lib.html_pages import board_data, document_page, index_page, project_documentation
+from kanban_lib.markdown_html import markdown_to_html
+from kanban_lib.server import HTML, TEXT, is_accepted_host, response
+from kanban_lib.ticket_file import slug, ticket_content
 
 
-def charger_kanban():
-    # Le script se lance avec « python3 -I » : son dossier n'est pas dans sys.path.
-    spec = importlib.util.spec_from_file_location("kanban", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+class ThrowawayRepo:
+    """A throwaway git repo with a backlog: config.yml, tickets and documents."""
 
-
-kanban = charger_kanban()
-
-
-class DepotDeTest:
-    """Un dépôt git jetable avec un backlog : config.yml, des tickets et des documents."""
-
-    def __init__(self, config="projet: Boutique\nprefixe: BOU\n"):
-        self._dossier = tempfile.TemporaryDirectory()
-        self.racine = Path(self._dossier.name).resolve()
-        (self.racine / ".git").mkdir()
-        self.backlog = self.racine / "docs" / "backlog"
+    def __init__(self, config="project: Boutique\nprefix: BOU\n"):
+        self._directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._directory.name).resolve()
+        (self.root / ".git").mkdir()
+        self.backlog = self.root / "docs" / "backlog"
         (self.backlog / "tickets").mkdir(parents=True)
-        self.ecrire("docs/backlog/config.yml", config)
+        self.write("docs/backlog/config.yml", config)
 
-    def ecrire(self, relatif, texte):
-        chemin = self.racine / relatif
-        chemin.parent.mkdir(parents=True, exist_ok=True)
-        chemin.write_text(texte, encoding="utf-8")
-        return chemin
+    def write(self, relative, text):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
 
-    def avec_ticket(self, cle, titre, **champs):
-        tous = {"cle": cle, "titre": titre, "type": "story", "statut": "a-cadrer", "cree": "2026-10-22", **champs}
-        self.ecrire(f"docs/backlog/tickets/{cle}-{kanban.slug(titre)}.md",
-                    kanban.contenu_ticket(tous, "Le besoin."))
+    def with_ticket(self, key, title, **fields):
+        all_fields = {"key": key, "title": title, "type": "story", "status": "to-refine", "created": "2026-10-22",
+                      **fields}
+        self.write(f"docs/backlog/tickets/{key}-{slug(title)}.md",
+                   ticket_content(all_fields, "The need."))
         return self
 
-    def avec_document(self, relatif, texte):
-        self.ecrire(relatif, texte)
+    def with_document(self, relative, text):
+        self.write(relative, text)
         return self
 
-    def fermer(self):
-        self._dossier.cleanup()
+    def close(self):
+        self._directory.cleanup()
 
 
-def port_libre():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
-class ServeurEnDirect(unittest.TestCase):
-    """« kanban.py serve » lancé pour de vrai, interrogé sur 127.0.0.1."""
+class LiveServer(unittest.TestCase):
+    """kanban.py serve, launched for real and queried on 127.0.0.1."""
 
     def setUp(self):
-        self.depot = (DepotDeTest()
-                      .avec_ticket("BOU-1", "Première ouverture", fiche="docs/specs/onboarding.md")
-                      .avec_document("docs/specs/onboarding.md", FICHE_ONBOARDING)
-                      .avec_document("docs/documentation/INDEX.md", "# Boutique\n\n[Glossaire](glossaire.md)\n")
-                      .avec_document("docs/documentation/glossaire.md", "# Glossaire\n\n### Niveau\n- CP à CM2\n"))
-        self.addCleanup(self.depot.fermer)
-        self.port = port_libre()
-        self.serveur = subprocess.Popen(
-            [sys.executable, "-I", "-B", str(SCRIPT), "--dossier", str(self.depot.backlog),
-             "serve", "--pas-ouvrir", "--port", str(self.port)],
+        self.repo = (ThrowawayRepo()
+                     .with_ticket("BOU-1", "First launch", spec="docs/specs/onboarding.md")
+                     .with_document("docs/specs/onboarding.md", ONBOARDING_SPEC)
+                     .with_document("docs/documentation/INDEX.md", "# Boutique\n\n[Glossary](glossary.md)\n")
+                     .with_document("docs/documentation/glossary.md", "# Glossary\n\n### Level\n- Grade 1 to grade 5\n"))
+        self.addCleanup(self.repo.close)
+        self.port = free_port()
+        self.server = subprocess.Popen(
+            [sys.executable, "-I", "-B", str(SCRIPT), "--dir", str(self.repo.backlog),
+             "serve", "--no-open", "--port", str(self.port)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.addCleanup(self.arreter)
-        self.annonce = self.serveur.stdout.readline()  # « Tableau en direct sur … » : le serveur écoute
+        self.addCleanup(self.stop)
+        self.announcement = self.server.stdout.readline()  # "Live board at …": the server is listening
 
-    def arreter(self):
-        self.serveur.terminate()
-        self.serveur.wait(timeout=5)
-        self.serveur.stdout.close()
-        self.serveur.stderr.close()
+    def stop(self):
+        self.server.terminate()
+        self.server.wait(timeout=5)
+        self.server.stdout.close()
+        self.server.stderr.close()
 
-    def lire(self, chemin):
+    def fetch(self, path):
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{chemin}", timeout=5) as r:
-                return r.status, r.headers.get("Content-Type"), r.read().decode("utf-8")
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as reply:
+                return reply.status, reply.headers.get("Content-Type"), reply.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             exc.close()
             return exc.code, None, None
 
-    def test_sert_le_tableau_a_la_racine(self):
-        code, type_, corps = self.lire("/")
+    def fetch_with_host(self, path, host):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            connection.request("GET", path, headers={"Host": host})
+            reply = connection.getresponse()
+            return reply.status, reply.read().decode("utf-8")
+        finally:
+            connection.close()
 
-        self.assertEqual((code, type_), (200, "text/html; charset=utf-8"))
-        self.assertIn("<title>Boutique · backlog</title>", corps)
+    def test_refuses_without_any_data_a_request_addressed_to_another_name(self):
+        code, body = self.fetch_with_host("/", f"evil.example:{self.port}")
 
-    def test_sert_l_empreinte_du_backlog_pour_le_rechargement_en_direct(self):
-        code, type_, corps = self.lire("/etat")
+        self.assertEqual(code, 403)
+        self.assertNotIn("Boutique", body)
 
-        self.assertEqual((code, type_), (200, "text/plain; charset=utf-8"))
-        self.assertRegex(corps, r"^[0-9a-f]{16}$")
+    def test_serves_the_board_at_the_root(self):
+        code, content_type, body = self.fetch("/")
 
-    def test_ne_sert_rien_d_autre(self):
-        code, _, _ = self.lire("/config.yml")
+        self.assertEqual((code, content_type), (200, "text/html; charset=utf-8"))
+        self.assertIn("""<title data-i18n="board.title" data-i18n-args='{"project": "Boutique"}'></title>""", body)
 
-        self.assertEqual(code, 404)
+    def test_serves_the_fingerprint_of_the_backlog_for_the_live_reload(self):
+        code, content_type, body = self.fetch("/state")
 
-    def test_annonce_l_adresse_du_tableau_et_celle_de_la_documentation(self):
-        self.assertIn(f"http://127.0.0.1:{self.port}/ ", self.annonce)
-        self.assertIn(f"http://127.0.0.1:{self.port}/doc/ ", self.annonce)
+        self.assertEqual((code, content_type), (200, "text/plain; charset=utf-8"))
+        self.assertRegex(body, r"^[0-9a-f]{16}$")
 
-    def test_sert_la_page_d_index_de_la_documentation(self):
-        code, type_, corps = self.lire("/doc/")
-
-        self.assertEqual((code, type_), (200, "text/html; charset=utf-8"))
-        self.assertIn('<a href="/doc/docs/specs/onboarding.md">Onboarding</a>', corps)
-        self.assertIn('<a href="/doc/docs/documentation/INDEX.md">Boutique</a>', corps)
-
-    def test_sert_une_fiche_avec_ses_scenarios(self):
-        code, type_, corps = self.lire("/doc/docs/specs/onboarding.md")
-
-        self.assertEqual((code, type_), (200, "text/html; charset=utf-8"))
-        self.assertIn("<h1>Onboarding</h1>", corps)
-        self.assertIn('<span class="gk-mot">Scénario:</span>', corps)
-
-    def test_ne_sert_pas_un_fichier_hors_des_dossiers_de_documentation(self):
-        code, _, _ = self.lire("/doc/docs/backlog/config.yml")
+    def test_serves_nothing_else(self):
+        code, _, _ = self.fetch("/config.yml")
 
         self.assertEqual(code, 404)
 
+    def test_announces_the_address_of_the_board_and_that_of_the_documentation(self):
+        self.assertIn(f"http://127.0.0.1:{self.port}/ ", self.announcement)
+        self.assertIn(f"http://127.0.0.1:{self.port}/doc/ ", self.announcement)
 
-class AmorcageDuBacklog(unittest.TestCase):
+    def test_serves_the_index_page_of_the_documentation(self):
+        code, content_type, body = self.fetch("/doc/")
 
-    def test_config_yml_signale_les_dossiers_de_documentation_par_defaut(self):
-        with tempfile.TemporaryDirectory() as dossier, contextlib.redirect_stdout(io.StringIO()):
-            kanban.main(["--dossier", dossier, "init", "--projet", "Boutique", "--prefixe", "BOU"])
-            config = (Path(dossier) / "config.yml").read_text(encoding="utf-8")
+        self.assertEqual((code, content_type), (200, "text/html; charset=utf-8"))
+        self.assertIn('<a href="/doc/docs/specs/onboarding.md">Onboarding</a>', body)
+        self.assertIn('<a href="/doc/docs/documentation/INDEX.md">Boutique</a>', body)
+
+    def test_serves_a_spec_with_its_scenarios(self):
+        code, content_type, body = self.fetch("/doc/docs/specs/onboarding.md")
+
+        self.assertEqual((code, content_type), (200, "text/html; charset=utf-8"))
+        self.assertIn("<h1>Onboarding</h1>", body)
+        self.assertIn('<span class="gk-keyword">Scenario:</span>', body)
+
+    def test_does_not_serve_a_file_outside_the_documentation_directories(self):
+        code, _, _ = self.fetch("/doc/docs/backlog/config.yml")
+
+        self.assertEqual(code, 404)
+
+
+class RequestHost(unittest.TestCase):
+    """serve only answers the requests addressed to the local machine by its address or by its name."""
+
+    def test_accepts_the_announced_address_with_or_without_a_port(self):
+        for host in ("127.0.0.1", "127.0.0.1:8765"):
+            self.assertTrue(is_accepted_host(host), host)
+
+    def test_accepts_the_name_localhost_with_or_without_a_port_whatever_its_case(self):
+        for host in ("localhost", "localhost:8765", "LocalHost:8765"):
+            self.assertTrue(is_accepted_host(host), host)
+
+    def test_refuses_any_other_host_even_with_the_port(self):
+        for host in ("evil.example:8765", "evil.example", "localhost.evil.example", "127.0.0.1.nip.io",
+                     "[::1]", "[::1]:8765"):
+            self.assertFalse(is_accepted_host(host), host)
+
+    def test_refuses_a_port_that_is_not_a_number(self):
+        for host in ("localhost:evil.example", "127.0.0.1:http"):
+            self.assertFalse(is_accepted_host(host), host)
+
+    def test_refuses_a_request_without_a_host(self):
+        for host in ("", None):
+            self.assertFalse(is_accepted_host(host), host)
+
+
+class BacklogInit(unittest.TestCase):
+
+    def test_config_yml_points_out_the_default_documentation_directories(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            main(["--dir", directory, "init", "--project", "Boutique", "--prefix", "BOU"])
+            config = (Path(directory) / "config.yml").read_text(encoding="utf-8")
 
         self.assertIn("\n# documentation: [docs/specs, docs/documentation]", config)
 
 
-class PanneauDuTableau(unittest.TestCase):
-    """Le panneau d'un ticket affiche le ticket et sa fiche, rendus par le même rendu que la documentation."""
+class BoardPanel(unittest.TestCase):
+    """The panel of a ticket shows the ticket and its spec, rendered like the documentation."""
 
-    def test_recoit_le_ticket_sans_son_titre_et_sa_fiche_deja_rendus(self):
-        depot = (DepotDeTest()
-                 .avec_ticket("BOU-1", "Première ouverture", fiche="docs/specs/onboarding.md")
-                 .avec_document("docs/specs/onboarding.md", "# Onboarding\n"))
-        self.addCleanup(depot.fermer)
+    def test_receives_the_ticket_without_its_title_and_its_spec_already_rendered(self):
+        repo = (ThrowawayRepo()
+                .with_ticket("BOU-1", "First launch", spec="docs/specs/onboarding.md")
+                .with_document("docs/specs/onboarding.md", "# Onboarding\n"))
+        self.addCleanup(repo.close)
 
-        ticket, = kanban.donnees_html(kanban.Backlog(depot.backlog), live=False)["tickets"]
+        ticket, = board_data(Backlog(repo.backlog), live=False)["tickets"]
 
-        self.assertEqual(ticket["corpsHtml"], "<h2>Résumé</h2>\n<p>Le besoin.</p>\n<h2>Notes de cadrage</h2>\n"
-                                              "<h2>Suivi</h2>\n<ul>\n<li>2026-10-22 · créé</li>\n</ul>")
-        self.assertEqual(ticket["ficheHtml"], "<h1>Onboarding</h1>")
-
-
-class TableauVersLaDocumentation(unittest.TestCase):
-    """Les données du tableau en direct mènent à la documentation ; le fichier HTML autonome, sans serveur, non."""
-
-    def setUp(self):
-        self.depot = (DepotDeTest()
-                      .avec_ticket("BOU-1", "Première ouverture", fiche="docs/specs/onboarding.md")
-                      .avec_document("docs/specs/onboarding.md", "# Onboarding\n"))
-        self.addCleanup(self.depot.fermer)
-
-    def donnees(self, live):
-        return kanban.donnees_html(kanban.Backlog(self.depot.backlog), live)
-
-    def test_le_tableau_en_direct_mene_a_la_documentation(self):
-        self.assertEqual(self.donnees(live=True)["documentation"], "/doc/")
-        self.assertIsNone(self.donnees(live=False)["documentation"])
-
-    def test_le_champ_fiche_d_un_ticket_mene_a_la_page_de_sa_fiche(self):
-        ticket, = self.donnees(live=True)["tickets"]
-
-        self.assertEqual(ticket["ficheUrl"], "/doc/docs/specs/onboarding.md")
-
-    def test_pas_de_page_pour_une_fiche_hors_de_la_documentation_ou_sans_serveur(self):
-        self.depot.avec_ticket("BOU-2", "Temps partiel", fiche="notes/temps-partiel.md")
-        self.depot.avec_document("notes/temps-partiel.md", "# Temps partiel\n")
-
-        en_direct = {t["cle"]: t["ficheUrl"] for t in self.donnees(live=True)["tickets"]}
-        autonome = {t["cle"]: t["ficheUrl"] for t in self.donnees(live=False)["tickets"]}
-
-        self.assertIsNone(en_direct["BOU-2"])
-        self.assertEqual(autonome, {"BOU-1": None, "BOU-2": None})
+        self.assertEqual(ticket["bodyHtml"], "<h2>Summary</h2>\n<p>The need.</p>\n<h2>Refinement notes</h2>\n"
+                                              "<h2>History</h2>\n<ul>\n<li>2026-10-22 · created</li>\n</ul>")
+        self.assertEqual(ticket["specHtml"], "<h1>Onboarding</h1>")
 
 
-class RoutesDeLaDocumentation(unittest.TestCase):
-    """Ce que « serve » répond à chaque adresse, sans passer par le réseau."""
+class BoardToDocumentation(unittest.TestCase):
+    """The data of the live board lead to the documentation; the standalone HTML file, without a server, does not."""
 
     def setUp(self):
-        self.depot = (DepotDeTest()
-                      .avec_document("docs/specs/onboarding.md", "# Onboarding\n")
-                      .avec_document("docs/backlog/README.md", "# Backlog\n"))
-        self.addCleanup(self.depot.fermer)
+        self.repo = (ThrowawayRepo()
+                     .with_ticket("BOU-1", "First launch", spec="docs/specs/onboarding.md")
+                     .with_document("docs/specs/onboarding.md", "# Onboarding\n"))
+        self.addCleanup(self.repo.close)
 
-    def reponse(self, cible):
-        return kanban.reponse(self.depot.backlog, cible)
+    def data(self, live):
+        return board_data(Backlog(self.repo.backlog), live)
 
-    def test_l_index_de_la_documentation_avec_ou_sans_barre_finale(self):
-        for cible in ("/doc", "/doc/?vue=1"):
-            code, type_, corps = self.reponse(cible)
-            self.assertEqual((code, type_), (200, kanban.HTML), cible)
-            self.assertIn("<h1>Documentation de Boutique</h1>", corps, cible)
+    def test_the_live_board_leads_to_the_documentation(self):
+        self.assertEqual(self.data(live=True)["documentation"], "/doc/")
+        self.assertIsNone(self.data(live=False)["documentation"])
 
-    def test_une_page_a_l_adresse_de_son_chemin_depuis_la_racine_du_depot(self):
-        self.depot.avec_document("docs/specs/journée type.md", "# Journée type\n")
+    def test_the_spec_field_of_a_ticket_leads_to_the_page_of_its_spec(self):
+        ticket, = self.data(live=True)["tickets"]
 
-        code, type_, corps = self.reponse("/doc/docs/specs/journ%C3%A9e%20type.md")
+        self.assertEqual(ticket["specUrl"], "/doc/docs/specs/onboarding.md")
 
-        self.assertEqual((code, type_), (200, kanban.HTML))
-        self.assertIn("<h1>Journée type</h1>", corps)
+    def test_no_page_for_a_spec_outside_the_documentation_or_without_a_server(self):
+        self.repo.with_ticket("BOU-2", "Part time", spec="notes/part-time.md")
+        self.repo.with_document("notes/part-time.md", "# Part time\n")
 
-    def test_l_empreinte_de_la_documentation_pour_le_rechargement_en_direct(self):
-        code, type_, corps = self.reponse("/etat/documentation")
+        live_urls = {ticket["key"]: ticket["specUrl"] for ticket in self.data(live=True)["tickets"]}
+        standalone_urls = {ticket["key"]: ticket["specUrl"] for ticket in self.data(live=False)["tickets"]}
 
-        self.assertEqual((code, type_), (200, kanban.TEXTE))
-        self.assertEqual(corps, kanban.Backlog(self.depot.backlog).documentation().etat())
-
-    def test_chaque_page_surveille_l_empreinte_de_la_documentation(self):
-        etat = kanban.Backlog(self.depot.backlog).documentation().etat()
-        for cible in ("/doc/", "/doc/docs/specs/onboarding.md"):
-            corps = self.reponse(cible)[2]
-            self.assertIn(f'const etat = "{etat}";', corps, cible)
-            self.assertIn('fetch("/etat/documentation"', corps, cible)
-
-    def test_introuvable_hors_des_dossiers_de_documentation(self):
-        for cible in ("/doc/docs/backlog/README.md", "/doc/docs/specs/%2E%2E/backlog/README.md",
-                      f"/doc/{self.depot.racine}/docs/specs/onboarding.md", "/doc/docs/specs/absente.md"):
-            self.assertEqual(self.reponse(cible)[0], 404, cible)
+        self.assertIsNone(live_urls["BOU-2"])
+        self.assertEqual(standalone_urls, {"BOU-1": None, "BOU-2": None})
 
 
-class DossiersDeDocumentation(unittest.TestCase):
-    """La clé « documentation » de config.yml : les dossiers servis, relatifs à la racine du dépôt."""
+class DocumentationRoutes(unittest.TestCase):
+    """What serve answers to each address, without going through the network."""
 
-    def test_sans_cle_les_fiches_et_la_documentation_du_projet(self):
-        self.assertEqual(kanban.dossiers_documentation({"projet": "Boutique"}),
+    def setUp(self):
+        self.repo = (ThrowawayRepo()
+                     .with_document("docs/specs/onboarding.md", "# Onboarding\n")
+                     .with_document("docs/backlog/README.md", "# Backlog\n"))
+        self.addCleanup(self.repo.close)
+
+    def response(self, target):
+        return response(self.repo.backlog, target)
+
+    def test_the_documentation_index_with_or_without_a_trailing_slash(self):
+        for target in ("/doc", "/doc/?view=1"):
+            code, content_type, body = self.response(target)
+            self.assertEqual((code, content_type), (200, HTML), target)
+            self.assertIn("""<h1 data-i18n="doc.index.heading" data-i18n-args='{"project": "Boutique"}'></h1>""",
+                          body, target)
+
+    def test_a_page_at_the_address_of_its_path_from_the_repo_root(self):
+        self.repo.with_document("docs/specs/jalapeño menu.md", "# Jalapeño menu\n")
+
+        code, content_type, body = self.response("/doc/docs/specs/jalape%C3%B1o%20menu.md")
+
+        self.assertEqual((code, content_type), (200, HTML))
+        self.assertIn("<h1>Jalapeño menu</h1>", body)
+
+    def test_the_fingerprint_of_the_documentation_for_the_live_reload(self):
+        code, content_type, body = self.response("/state/documentation")
+
+        self.assertEqual((code, content_type), (200, TEXT))
+        self.assertEqual(body, project_documentation(Backlog(self.repo.backlog)).fingerprint())
+
+    def test_each_page_watches_the_fingerprint_of_the_documentation(self):
+        fingerprint = project_documentation(Backlog(self.repo.backlog)).fingerprint()
+        for target in ("/doc/", "/doc/docs/specs/onboarding.md"):
+            body = self.response(target)[2]
+            self.assertIn(f'const fingerprint = "{fingerprint}";', body, target)
+            self.assertIn('fetch("/state/documentation"', body, target)
+
+    def test_not_found_outside_the_documentation_directories(self):
+        for target in ("/doc/docs/backlog/README.md", "/doc/docs/specs/%2E%2E/backlog/README.md",
+                       f"/doc/{self.repo.root}/docs/specs/onboarding.md", "/doc/docs/specs/missing.md"):
+            self.assertEqual(self.response(target)[0], 404, target)
+
+
+class DocumentationDirectories(unittest.TestCase):
+    """The documentation key of config.yml: the served directories, relative to the repo root."""
+
+    def test_without_the_key_the_specs_and_the_project_documentation(self):
+        self.assertEqual(documentation_directories({"project": "Boutique"}),
                          ["docs/specs", "docs/documentation"])
 
-    def test_une_liste_de_dossiers(self):
-        self.assertEqual(kanban.dossiers_documentation({"documentation": ["docs/specs", "docs/adr"]}),
+    def test_a_list_of_directories(self):
+        self.assertEqual(documentation_directories({"documentation": ["docs/specs", "docs/adr"]}),
                          ["docs/specs", "docs/adr"])
 
-    def test_un_seul_dossier_ecrit_sans_crochets(self):
-        self.assertEqual(kanban.dossiers_documentation({"documentation": "docs/specs"}), ["docs/specs"])
+    def test_a_single_directory_written_without_brackets(self):
+        self.assertEqual(documentation_directories({"documentation": "docs/specs"}), ["docs/specs"])
 
 
-class ResolutionDesDocuments(unittest.TestCase):
-    """Seuls les fichiers .md des dossiers de documentation, sous la racine du dépôt, sont servis."""
+class DocumentResolution(unittest.TestCase):
+    """Only the .md files of the documentation directories, under the repo root, are served."""
 
     def setUp(self):
-        self.depot = DepotDeTest().avec_document("docs/specs/onboarding.md", "# Onboarding\n")
-        self.addCleanup(self.depot.fermer)
-        self.documentation = kanban.Documentation(self.depot.racine, ["docs/specs"])
+        self.repo = ThrowawayRepo().with_document("docs/specs/onboarding.md", "# Onboarding\n")
+        self.addCleanup(self.repo.close)
+        self.documentation = Documentation(self.repo.root, ["docs/specs"])
 
-    def test_un_fichier_markdown_d_un_dossier_de_documentation(self):
+    def test_a_markdown_file_of_a_documentation_directory(self):
         self.assertEqual(self.documentation.document("docs/specs/onboarding.md"),
-                         self.depot.racine / "docs/specs/onboarding.md")
+                         self.repo.root / "docs/specs/onboarding.md")
 
-    def test_refuse_un_fichier_qui_n_est_pas_du_markdown(self):
-        self.depot.ecrire("docs/specs/maquette.html", "<p>maquette</p>")
+    def test_refuses_a_file_that_is_not_markdown(self):
+        self.repo.write("docs/specs/mockup.html", "<p>mockup</p>")
 
-        self.assertIsNone(self.documentation.document("docs/specs/maquette.html"))
+        self.assertIsNone(self.documentation.document("docs/specs/mockup.html"))
 
-    def test_refuse_un_fichier_markdown_hors_des_dossiers_de_documentation(self):
-        self.depot.ecrire("docs/backlog/README.md", "# Backlog\n")
+    def test_refuses_a_markdown_file_outside_the_documentation_directories(self):
+        self.repo.write("docs/backlog/README.md", "# Backlog\n")
 
         self.assertIsNone(self.documentation.document("docs/backlog/README.md"))
 
-    def test_refuse_de_remonter_hors_d_un_dossier_de_documentation(self):
-        self.depot.ecrire("docs/backlog/README.md", "# Backlog\n")
+    def test_refuses_to_go_up_out_of_a_documentation_directory(self):
+        self.repo.write("docs/backlog/README.md", "# Backlog\n")
 
         self.assertIsNone(self.documentation.document("docs/specs/../backlog/README.md"))
 
-    def test_refuse_un_lien_symbolique_qui_sort_du_depot(self):
-        ailleurs = tempfile.TemporaryDirectory()
-        self.addCleanup(ailleurs.cleanup)
-        secret = Path(ailleurs.name) / "secret.md"
+    def test_refuses_a_symbolic_link_that_leads_out_of_the_repo(self):
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        secret = Path(elsewhere.name) / "secret.md"
         secret.write_text("# Secret\n", encoding="utf-8")
-        (self.depot.racine / "docs/specs/secret.md").symlink_to(secret)
+        (self.repo.root / "docs/specs/secret.md").symlink_to(secret)
 
         self.assertIsNone(self.documentation.document("docs/specs/secret.md"))
 
-    def test_refuse_un_dossier_de_documentation_qui_est_un_lien_hors_du_depot(self):
-        ailleurs = tempfile.TemporaryDirectory()
-        self.addCleanup(ailleurs.cleanup)
-        (Path(ailleurs.name) / "secret.md").write_text("# Secret\n", encoding="utf-8")
-        (self.depot.racine / "docs/adr").symlink_to(ailleurs.name, target_is_directory=True)
-        documentation = kanban.Documentation(self.depot.racine, ["docs/adr"])
+    def test_refuses_a_documentation_directory_that_is_a_link_outside_the_repo(self):
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        (Path(elsewhere.name) / "secret.md").write_text("# Secret\n", encoding="utf-8")
+        (self.repo.root / "docs/adr").symlink_to(elsewhere.name, target_is_directory=True)
+        documentation = Documentation(self.repo.root, ["docs/adr"])
 
         self.assertIsNone(documentation.document("docs/adr/secret.md"))
 
-    def test_refuse_un_lien_markdown_vers_un_fichier_qui_n_en_est_pas(self):
-        self.depot.ecrire("docs/specs/notes.txt", "notes")
-        (self.depot.racine / "docs/specs/notes.md").symlink_to("notes.txt")
+    def test_refuses_a_markdown_link_to_a_file_that_is_not_markdown(self):
+        self.repo.write("docs/specs/notes.txt", "notes")
+        (self.repo.root / "docs/specs/notes.md").symlink_to("notes.txt")
 
         self.assertIsNone(self.documentation.document("docs/specs/notes.md"))
 
-    def test_rien_pour_un_document_absent(self):
-        self.assertIsNone(self.documentation.document("docs/specs/absente.md"))
+    def test_nothing_for_a_missing_document(self):
+        self.assertIsNone(self.documentation.document("docs/specs/missing.md"))
 
 
-class SommaireDeLaDocumentation(unittest.TestCase):
-    """Les rubriques de la page d'index : un dossier de documentation chacune, avec ses pages."""
-
-    def setUp(self):
-        self.depot = DepotDeTest()
-        self.addCleanup(self.depot.fermer)
-
-    def rubriques(self, *dossiers):
-        return kanban.Documentation(self.depot.racine, list(dossiers)).sommaire()
-
-    def test_les_pages_d_un_dossier_avec_leur_titre_dans_l_ordre_des_chemins(self):
-        self.depot.avec_document("docs/specs/temps-partiel.md", "# Temps partiel\n")
-        self.depot.avec_document("docs/specs/onboarding.md", "Statut : prête\n\n# Onboarding\n")
-
-        rubrique, = self.rubriques("docs/specs")
-
-        self.assertEqual(rubrique.dossier, "docs/specs")
-        self.assertEqual(rubrique.pages, [kanban.Page("docs/specs/onboarding.md", "Onboarding"),
-                                          kanban.Page("docs/specs/temps-partiel.md", "Temps partiel")])
-
-    def test_une_page_sans_titre_prend_le_nom_de_son_fichier(self):
-        self.depot.avec_document("docs/specs/brouillon.md", "## Pourquoi\n")
-
-        rubrique, = self.rubriques("docs/specs")
-
-        self.assertEqual(rubrique.pages, [kanban.Page("docs/specs/brouillon.md", "brouillon.md")])
-
-    def test_le_point_d_entree_d_un_dossier_passe_en_tete(self):
-        self.depot.avec_document("docs/documentation/Annexe.md", "# Annexe\n")
-        self.depot.avec_document("docs/documentation/index.md", "# Boutique\n")
-
-        rubrique, = self.rubriques("docs/documentation")
-
-        self.assertEqual([p.chemin for p in rubrique.pages],
-                         ["docs/documentation/index.md", "docs/documentation/Annexe.md"])
-        self.assertTrue(rubrique.pages[0].est_point_d_entree)
-        self.assertFalse(rubrique.pages[1].est_point_d_entree)
-
-    def test_un_dossier_absent_donne_une_rubrique_vide_qui_le_dit(self):
-        self.depot.avec_document("docs/specs/onboarding.md", "# Onboarding\n")
-
-        specs, documentation = self.rubriques("docs/specs", "docs/documentation")
-
-        self.assertTrue(specs.existe)
-        self.assertEqual((documentation.existe, documentation.pages), (False, []))
-
-    def test_ne_liste_pas_ce_qui_ne_serait_pas_servi(self):
-        ailleurs = tempfile.TemporaryDirectory()
-        self.addCleanup(ailleurs.cleanup)
-        secret = Path(ailleurs.name) / "secret.md"
-        secret.write_text("# Titre secret\n", encoding="utf-8")
-        self.depot.avec_document("docs/specs/onboarding.md", "# Onboarding\n")
-        (self.depot.racine / "docs/specs/secret.md").symlink_to(secret)
-
-        rubrique, = self.rubriques("docs/specs")
-
-        self.assertEqual(rubrique.pages, [kanban.Page("docs/specs/onboarding.md", "Onboarding")])
-
-    def test_les_pages_des_sous_dossiers_suivent_celles_du_dossier(self):
-        for chemin in ("regles/calendrier.md", "regles/INDEX.md", "glossaire.md", "INDEX.md"):
-            self.depot.avec_document(f"docs/documentation/{chemin}", "# Page\n")
-
-        rubrique, = self.rubriques("docs/documentation")
-
-        self.assertEqual([p.chemin for p in rubrique.pages],
-                         ["docs/documentation/INDEX.md", "docs/documentation/glossaire.md",
-                          "docs/documentation/regles/INDEX.md", "docs/documentation/regles/calendrier.md"])
-
-    def test_un_dossier_configure_hors_du_depot_ne_donne_aucune_page(self):
-        ailleurs = tempfile.TemporaryDirectory()
-        self.addCleanup(ailleurs.cleanup)
-        (Path(ailleurs.name) / "secret.md").write_text("# Secret\n", encoding="utf-8")
-
-        absolu, remontant = self.rubriques(ailleurs.name, f"../{Path(ailleurs.name).name}")
-
-        self.assertEqual((absolu.pages, remontant.pages), ([], []))
-
-
-class EmpreinteDeLaDocumentation(unittest.TestCase):
-    """L'empreinte que les pages de documentation surveillent pour se recharger en direct."""
+class DocumentationIndex(unittest.TestCase):
+    """The folder sections of the index page: one documentation directory each, with its pages."""
 
     def setUp(self):
-        self.depot = DepotDeTest().avec_document("docs/specs/onboarding.md", "# Onboarding\n")
-        self.addCleanup(self.depot.fermer)
-        self.documentation = kanban.Documentation(self.depot.racine, ["docs/specs"])
+        self.repo = ThrowawayRepo()
+        self.addCleanup(self.repo.close)
 
-    def test_change_quand_une_page_change(self):
-        avant = self.documentation.etat()
+    def folder_sections(self, *directories):
+        return Documentation(self.repo.root, list(directories)).index()
 
-        self.depot.avec_document("docs/specs/onboarding.md", "# Onboarding\n\nUne règle de plus.\n")
+    def test_the_pages_of_a_directory_with_their_title_in_the_order_of_the_paths(self):
+        self.repo.with_document("docs/specs/part-time.md", "# Part time\n")
+        self.repo.with_document("docs/specs/onboarding.md", "Status: ready\n\n# Onboarding\n")
 
-        self.assertNotEqual(self.documentation.etat(), avant)
+        folder_section, = self.folder_sections("docs/specs")
 
-    def test_change_quand_une_page_apparait(self):
-        avant = self.documentation.etat()
+        self.assertEqual(folder_section.directory, "docs/specs")
+        self.assertEqual(folder_section.pages, [Page("docs/specs/onboarding.md", "Onboarding"),
+                                                Page("docs/specs/part-time.md", "Part time")])
 
-        self.depot.avec_document("docs/specs/temps-partiel.md", "# Temps partiel\n")
+    def test_a_page_without_a_title_takes_the_name_of_its_file(self):
+        self.repo.with_document("docs/specs/draft.md", "## Why\n")
 
-        self.assertNotEqual(self.documentation.etat(), avant)
+        folder_section, = self.folder_sections("docs/specs")
 
-    def test_ne_change_pas_tant_que_rien_ne_change(self):
-        self.assertEqual(self.documentation.etat(), self.documentation.etat())
+        self.assertEqual(folder_section.pages, [Page("docs/specs/draft.md", "draft.md")])
+
+    def test_the_entry_page_of_a_directory_comes_first(self):
+        self.repo.with_document("docs/documentation/Appendix.md", "# Appendix\n")
+        self.repo.with_document("docs/documentation/index.md", "# Boutique\n")
+
+        folder_section, = self.folder_sections("docs/documentation")
+
+        self.assertEqual([p.path for p in folder_section.pages],
+                         ["docs/documentation/index.md", "docs/documentation/Appendix.md"])
+        self.assertTrue(folder_section.pages[0].is_entry_page)
+        self.assertFalse(folder_section.pages[1].is_entry_page)
+
+    def test_a_missing_directory_gives_an_empty_folder_section_that_says_so(self):
+        self.repo.with_document("docs/specs/onboarding.md", "# Onboarding\n")
+
+        specs, documentation = self.folder_sections("docs/specs", "docs/documentation")
+
+        self.assertTrue(specs.exists)
+        self.assertEqual((documentation.exists, documentation.pages), (False, []))
+
+    def test_does_not_list_what_would_not_be_served(self):
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        secret = Path(elsewhere.name) / "secret.md"
+        secret.write_text("# Secret title\n", encoding="utf-8")
+        self.repo.with_document("docs/specs/onboarding.md", "# Onboarding\n")
+        (self.repo.root / "docs/specs/secret.md").symlink_to(secret)
+
+        folder_section, = self.folder_sections("docs/specs")
+
+        self.assertEqual(folder_section.pages, [Page("docs/specs/onboarding.md", "Onboarding")])
+
+    def test_the_pages_of_the_subdirectories_follow_those_of_the_directory(self):
+        for path in ("rules/calendar.md", "rules/INDEX.md", "glossary.md", "INDEX.md"):
+            self.repo.with_document(f"docs/documentation/{path}", "# Page\n")
+
+        folder_section, = self.folder_sections("docs/documentation")
+
+        self.assertEqual([p.path for p in folder_section.pages],
+                         ["docs/documentation/INDEX.md", "docs/documentation/glossary.md",
+                          "docs/documentation/rules/INDEX.md", "docs/documentation/rules/calendar.md"])
+
+    def test_a_directory_configured_outside_the_repo_gives_no_page(self):
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        (Path(elsewhere.name) / "secret.md").write_text("# Secret\n", encoding="utf-8")
+
+        absolute, upward = self.folder_sections(elsewhere.name, f"../{Path(elsewhere.name).name}")
+
+        self.assertEqual((absolute.pages, upward.pages), ([], []))
 
 
-def corps_de_page(page):
-    """Le contenu d'une page de documentation, sans son en-tête ni son style : des échecs lisibles."""
+class DocumentationFingerprint(unittest.TestCase):
+    """The fingerprint that the documentation pages watch to reload live."""
+
+    def setUp(self):
+        self.repo = ThrowawayRepo().with_document("docs/specs/onboarding.md", "# Onboarding\n")
+        self.addCleanup(self.repo.close)
+        self.documentation = Documentation(self.repo.root, ["docs/specs"])
+
+    def test_changes_when_a_page_changes(self):
+        before = self.documentation.fingerprint()
+
+        self.repo.with_document("docs/specs/onboarding.md", "# Onboarding\n\nOne more rule.\n")
+
+        self.assertNotEqual(self.documentation.fingerprint(), before)
+
+    def test_changes_when_a_page_appears(self):
+        before = self.documentation.fingerprint()
+
+        self.repo.with_document("docs/specs/part-time.md", "# Part time\n")
+
+        self.assertNotEqual(self.documentation.fingerprint(), before)
+
+    def test_does_not_change_as_long_as_nothing_changes(self):
+        self.assertEqual(self.documentation.fingerprint(), self.documentation.fingerprint())
+
+
+def page_body(page):
+    """The content of a documentation page, without its head or its style: readable failures."""
     return page.split('<div class="page">', 1)[1].split("</div>\n<script>", 1)[0]
 
 
-class PageDuSommaire(unittest.TestCase):
-    """La page d'index de la documentation, servie sur /doc/."""
+class IndexPage(unittest.TestCase):
+    """The index page of the documentation, served on /doc/."""
 
     def setUp(self):
-        self.depot = DepotDeTest()
-        self.addCleanup(self.depot.fermer)
+        self.repo = ThrowawayRepo()
+        self.addCleanup(self.repo.close)
 
     def page(self):
-        return corps_de_page(kanban.page_sommaire(kanban.Backlog(self.depot.backlog)))
+        return page_body(index_page(Backlog(self.repo.backlog)))
 
-    def test_ramene_au_tableau(self):
-        self.assertIn('<nav class="fil"><a href="/">Tableau</a> › Documentation</nav>\n'
-                      "<h1>Documentation de Boutique</h1>", self.page())
+    def test_leads_back_to_the_board(self):
+        self.assertIn('<nav class="breadcrumb" data-i18n="doc.breadcrumb.documentation">'
+                      '<a href="/" data-i18n="doc.breadcrumb.board"></a> › </nav>\n'
+                      """<h1 data-i18n="doc.index.heading" data-i18n-args='{"project": "Boutique"}'></h1>""",
+                      self.page())
 
-    def test_un_lien_vers_chaque_page_avec_son_titre(self):
-        self.depot.avec_document("docs/specs/onboarding.md", "# Onboarding\n")
+    def test_a_link_to_each_page_with_its_title(self):
+        self.repo.with_document("docs/specs/onboarding.md", "# Onboarding\n")
 
         self.assertIn('<a href="/doc/docs/specs/onboarding.md">Onboarding</a>', self.page())
 
-    def test_dit_qu_un_dossier_de_documentation_n_existe_pas_encore(self):
-        self.assertIn("Aucune page pour l’instant : le dossier docs/documentation n’existe pas.", self.page())
+    def test_says_that_a_documentation_directory_does_not_exist_yet(self):
+        self.assertIn("""<p class="empty" data-i18n="doc.folder.missing" """
+                      """data-i18n-args='{"directory": "docs/documentation"}'></p>""", self.page())
 
-    def test_dit_qu_un_dossier_de_documentation_n_a_pas_encore_de_page(self):
-        (self.depot.racine / "docs/specs").mkdir()
+    def test_says_that_a_documentation_directory_has_no_page_yet(self):
+        (self.repo.root / "docs/specs").mkdir()
 
-        self.assertIn('<h2>docs/specs</h2><p class="vide">Aucune page pour l’instant.</p>', self.page())
+        self.assertIn('<h2>docs/specs</h2><p class="empty" data-i18n="doc.folder.empty"></p>', self.page())
 
-    def test_signale_le_point_d_entree_d_un_dossier(self):
-        self.depot.avec_document("docs/documentation/INDEX.md", "# Boutique\n")
+    def test_points_out_the_entry_page_of_a_directory(self):
+        self.repo.with_document("docs/documentation/INDEX.md", "# Boutique\n")
 
         self.assertIn('<a href="/doc/docs/documentation/INDEX.md">Boutique</a>'
-                      ' <span class="badge">point d’entrée</span>',
+                      ' <span class="badge" data-i18n="doc.entryPage"></span>',
                       self.page())
 
 
-class PageDUnDocument(unittest.TestCase):
-    """La page d'un document, servie sur /doc/<chemin depuis la racine du dépôt>."""
+class DocumentPage(unittest.TestCase):
+    """The page of a document, served on /doc/<path from the repo root>."""
 
     def setUp(self):
-        self.depot = DepotDeTest().avec_document("docs/specs/onboarding.md", "# Onboarding\n\nLe **besoin**.\n")
-        self.addCleanup(self.depot.fermer)
+        self.repo = ThrowawayRepo().with_document("docs/specs/onboarding.md", "# Onboarding\n\nThe **need**.\n")
+        self.addCleanup(self.repo.close)
 
-    def page(self, chemin="docs/specs/onboarding.md"):
-        return kanban.page_document(kanban.Backlog(self.depot.backlog), chemin)
+    def page(self, path="docs/specs/onboarding.md"):
+        return document_page(Backlog(self.repo.backlog), path)
 
-    def test_le_document_rendu_sous_un_fil_qui_ramene_a_la_documentation_et_au_tableau(self):
-        self.assertEqual(corps_de_page(self.page()),
-                         '\n<nav class="fil"><a href="/">Tableau</a> › <a href="/doc/">Documentation</a> › '
-                         '<span class="chemin">docs/specs/onboarding.md</span></nav>\n'
+    def test_the_document_rendered_under_a_trail_that_leads_back_to_the_documentation_and_the_board(self):
+        self.assertEqual(page_body(self.page()),
+                         '\n<nav class="breadcrumb"><a href="/" data-i18n="doc.breadcrumb.board"></a> › '
+                         '<a href="/doc/" data-i18n="doc.breadcrumb.documentation"></a> › '
+                         '<span class="path">docs/specs/onboarding.md</span></nav>\n'
                          '<article class="md">\n<h1>Onboarding</h1>\n'
-                         '<p>Le <strong>besoin</strong>.</p>\n</article>\n')
+                         '<p>The <strong>need</strong>.</p>\n</article>\n')
 
-    def test_l_onglet_porte_le_titre_du_document(self):
+    def test_the_tab_bears_the_title_of_the_document(self):
         self.assertEqual(re.search(r"<title>(.*)</title>", self.page()).group(1), "Onboarding · Boutique")
 
-    def test_rien_pour_un_document_qui_n_est_pas_a_servir(self):
+    def test_nothing_for_a_document_that_is_not_to_be_served(self):
         self.assertIsNone(self.page("docs/backlog/config.yml"))
 
-    def test_la_fiche_mene_aux_tickets_qui_la_designent(self):
-        self.depot.avec_ticket("BOU-1", "Première ouverture", fiche="docs/specs/onboarding.md")
-        self.depot.avec_ticket("BOU-2", "Temps partiel", fiche="docs/specs/temps-partiel.md")
+    def test_the_spec_leads_to_the_tickets_that_designate_it(self):
+        self.repo.with_ticket("BOU-1", "First launch", spec="docs/specs/onboarding.md")
+        self.repo.with_ticket("BOU-2", "Part time", spec="docs/specs/part-time.md")
 
-        self.assertIn('<p class="sous">Fiche de <a href="/#BOU-1">BOU-1 · Première ouverture</a></p>',
-                      corps_de_page(self.page()))
+        self.assertIn('<p class="subtitle" data-i18n="doc.spec.tickets" data-i18n-at="start">'
+                      ' <a href="/#BOU-1">BOU-1 · First launch</a></p>',
+                      page_body(self.page()))
 
 
 def html(markdown):
-    return kanban.markdown_en_html(markdown)
+    return markdown_to_html(markdown)
 
 
-class RenduDesParagraphes(unittest.TestCase):
+class ParagraphRendering(unittest.TestCase):
 
-    def test_un_paragraphe_au_texte_echappe(self):
-        self.assertEqual(html('Un <script> & des "guillemets"'),
-                         "<p>Un &lt;script&gt; &amp; des &quot;guillemets&quot;</p>")
+    def test_a_paragraph_with_its_text_escaped(self):
+        self.assertEqual(html('A <script> & some "quotes"'),
+                         "<p>A &lt;script&gt; &amp; some &quot;quotes&quot;</p>")
 
-    def test_une_ligne_vide_separe_deux_paragraphes(self):
-        self.assertEqual(html("Première ligne\nsuite du paragraphe\n\nDeuxième paragraphe\n"),
-                         "<p>Première ligne\nsuite du paragraphe</p>\n<p>Deuxième paragraphe</p>")
+    def test_a_blank_line_separates_two_paragraphs(self):
+        self.assertEqual(html("First line\nrest of the paragraph\n\nSecond paragraph\n"),
+                         "<p>First line\nrest of the paragraph</p>\n<p>Second paragraph</p>")
 
-    def test_deux_espaces_ou_un_antislash_en_fin_de_ligne_forcent_le_retour_a_la_ligne(self):
-        self.assertEqual(html("Question  \nRéponse\\\nMémoire : R-024  "),
-                         "<p>Question<br>\nRéponse<br>\nMémoire : R-024</p>")
-
-
-class RenduDesTitres(unittest.TestCase):
-
-    def test_un_titre_par_niveau_de_dieses(self):
-        self.assertEqual(html("# Glossaire\n## Niveau\n###### Détail"),
-                         "<h1>Glossaire</h1>\n<h2>Niveau</h2>\n<h6>Détail</h6>")
-
-    def test_un_titre_termine_le_paragraphe_qui_le_precede(self):
-        self.assertEqual(html("Le besoin.\n## Suivi"), "<p>Le besoin.</p>\n<h2>Suivi</h2>")
-
-    def test_un_titre_garde_sa_mise_en_forme(self):
-        self.assertEqual(html("## La commande `kanban serve`"), "<h2>La commande <code>kanban serve</code></h2>")
-
-    def test_les_dieses_de_fermeture_ne_font_pas_partie_du_titre(self):
-        self.assertEqual(html("## Suivi ##"), "<h2>Suivi</h2>")
+    def test_two_spaces_or_a_backslash_at_the_end_of_a_line_force_a_line_break(self):
+        self.assertEqual(html("Question  \nAnswer\\\nMemory: R-024  "),
+                         "<p>Question<br>\nAnswer<br>\nMemory: R-024</p>")
 
 
-class RenduEnLigne(unittest.TestCase):
+class HeadingRendering(unittest.TestCase):
 
-    def test_le_gras(self):
-        self.assertEqual(html("**Question** posée"), "<p><strong>Question</strong> posée</p>")
+    def test_one_heading_per_level_of_hashes(self):
+        self.assertEqual(html("# Glossary\n## Level\n###### Detail"),
+                         "<h1>Glossary</h1>\n<h2>Level</h2>\n<h6>Detail</h6>")
 
-    def test_l_italique_avec_une_etoile_ou_un_souligne(self):
-        self.assertEqual(html("un *rythme* et une _quotité_"), "<p>un <em>rythme</em> et une <em>quotité</em></p>")
+    def test_a_heading_ends_the_paragraph_that_precedes_it(self):
+        self.assertEqual(html("The need.\n## History"), "<p>The need.</p>\n<h2>History</h2>")
 
-    def test_pas_d_italique_entre_les_soulignes_d_un_mot(self):
-        self.assertEqual(html("les champs synchro_jira et empreinte_jira"),
-                         "<p>les champs synchro_jira et empreinte_jira</p>")
+    def test_a_heading_keeps_its_formatting(self):
+        self.assertEqual(html("## The `kanban serve` command"), "<h2>The <code>kanban serve</code> command</h2>")
 
-    def test_le_code_en_ligne_garde_son_texte_tel_quel(self):
-        self.assertEqual(html("lancer `kanban **serve** <port>` puis"),
-                         "<p>lancer <code>kanban **serve** &lt;port&gt;</code> puis</p>")
+    def test_the_closing_hashes_are_not_part_of_the_heading(self):
+        self.assertEqual(html("## History ##"), "<h2>History</h2>")
 
-    def test_les_caracteres_de_controle_du_fichier_sont_retires(self):
+
+class InlineRendering(unittest.TestCase):
+
+    def test_bold(self):
+        self.assertEqual(html("**Question** asked"), "<p><strong>Question</strong> asked</p>")
+
+    def test_italics_with_an_asterisk_or_an_underscore(self):
+        self.assertEqual(html("a *rhythm* and a _share_"), "<p>a <em>rhythm</em> and a <em>share</em></p>")
+
+    def test_no_italics_between_the_underscores_of_a_word(self):
+        self.assertEqual(html("the fields jira_sync and jira_fingerprint"),
+                         "<p>the fields jira_sync and jira_fingerprint</p>")
+
+    def test_inline_code_keeps_its_text_as_it_is(self):
+        self.assertEqual(html("run `kanban **serve** <port>` then"),
+                         "<p>run <code>kanban **serve** &lt;port&gt;</code> then</p>")
+
+    def test_the_control_characters_of_the_file_are_removed(self):
         self.assertEqual(html("a\x000\x00b\x1b"), "<p>a0b</p>")
 
-    def test_un_antislash_garde_le_caractere_qui_le_suit_tel_quel(self):
-        self.assertEqual(html(r"\*pas en italique\* ni \`en code\`"), "<p>*pas en italique* ni `en code`</p>")
+    def test_a_backslash_keeps_the_character_that_follows_it_as_it_is(self):
+        self.assertEqual(html(r"\*not in italics\* nor \`in code\`"), "<p>*not in italics* nor `in code`</p>")
 
 
-class RenduDesListes(unittest.TestCase):
+class ListRendering(unittest.TestCase):
 
-    def test_une_liste_a_puces(self):
-        self.assertEqual(html("- CP\n- **CE1**\n- CE2"),
-                         "<ul>\n<li>CP</li>\n<li><strong>CE1</strong></li>\n<li>CE2</li>\n</ul>")
+    def test_a_bulleted_list(self):
+        self.assertEqual(html("- Grade 1\n- **Grade 2**\n- Grade 3"),
+                         "<ul>\n<li>Grade 1</li>\n<li><strong>Grade 2</strong></li>\n<li>Grade 3</li>\n</ul>")
 
-    def test_une_liste_termine_le_paragraphe_qui_la_precede(self):
-        self.assertEqual(html("Dans cette tranche :\n- le rythme"),
-                         "<p>Dans cette tranche :</p>\n<ul>\n<li>le rythme</li>\n</ul>")
+    def test_a_list_ends_the_paragraph_that_precedes_it(self):
+        self.assertEqual(html("In this slice:\n- the rhythm"),
+                         "<p>In this slice:</p>\n<ul>\n<li>the rhythm</li>\n</ul>")
 
-    def test_une_liste_dans_une_liste(self):
-        self.assertEqual(html("- Dans cette tranche :\n  - le rythme\n  - la quotité\n- Plus tard : la zone"),
-                         "<ul>\n<li>Dans cette tranche :\n"
-                         "<ul>\n<li>le rythme</li>\n<li>la quotité</li>\n</ul></li>\n"
-                         "<li>Plus tard : la zone</li>\n</ul>")
+    def test_a_list_inside_a_list(self):
+        self.assertEqual(html("- In this slice:\n  - the rhythm\n  - the share\n- Later: the zone"),
+                         "<ul>\n<li>In this slice:\n"
+                         "<ul>\n<li>the rhythm</li>\n<li>the share</li>\n</ul></li>\n"
+                         "<li>Later: the zone</li>\n</ul>")
 
-    def test_une_ligne_qui_continue_l_item_sans_retrait(self):
-        self.assertEqual(html("- Statut : confirmée\nsuite de la source\n- Deuxième"),
-                         "<ul>\n<li>Statut : confirmée\nsuite de la source</li>\n<li>Deuxième</li>\n</ul>")
+    def test_a_line_that_continues_the_item_without_indent(self):
+        self.assertEqual(html("- Status: confirmed\nrest of the source\n- Second"),
+                         "<ul>\n<li>Status: confirmed\nrest of the source</li>\n<li>Second</li>\n</ul>")
 
-    def test_une_liste_numerotee(self):
-        self.assertEqual(html("1. Le rythme\n2. La quotité"),
-                         "<ol>\n<li>Le rythme</li>\n<li>La quotité</li>\n</ol>")
+    def test_a_numbered_list(self):
+        self.assertEqual(html("1. The rhythm\n2. The share"),
+                         "<ol>\n<li>The rhythm</li>\n<li>The share</li>\n</ol>")
 
-    def test_une_liste_numerotee_garde_son_premier_numero(self):
-        self.assertEqual(html("3. Les jours travaillés"), '<ol start="3">\n<li>Les jours travaillés</li>\n</ol>')
+    def test_a_numbered_list_keeps_its_first_number(self):
+        self.assertEqual(html("3. The working days"), '<ol start="3">\n<li>The working days</li>\n</ol>')
 
-    def test_une_autre_sorte_de_puce_commence_une_autre_liste(self):
-        self.assertEqual(html("1. Un\n- puce"), "<ol>\n<li>Un</li>\n</ol>\n<ul>\n<li>puce</li>\n</ul>")
+    def test_another_kind_of_bullet_starts_another_list(self):
+        self.assertEqual(html("1. One\n- bullet"), "<ol>\n<li>One</li>\n</ol>\n<ul>\n<li>bullet</li>\n</ul>")
 
-    def test_une_ligne_vide_entre_deux_items_aere_la_liste_sans_la_couper(self):
-        self.assertEqual(html("1. Un\n\n2. Deux"), "<ol>\n<li><p>Un</p></li>\n<li><p>Deux</p></li>\n</ol>")
+    def test_a_blank_line_between_two_items_loosens_the_list_without_splitting_it(self):
+        self.assertEqual(html("1. One\n\n2. Two"), "<ol>\n<li><p>One</p></li>\n<li><p>Two</p></li>\n</ol>")
 
-    def test_un_item_garde_ce_qui_est_retire_apres_une_ligne_vide(self):
-        self.assertEqual(html("- Un\n\n  suite de l'item\n- Deux"),
-                         "<ul>\n<li><p>Un</p>\n<p>suite de l&#x27;item</p></li>\n<li><p>Deux</p></li>\n</ul>")
+    def test_an_item_keeps_what_is_indented_after_a_blank_line(self):
+        self.assertEqual(html("- One\n\n  the item's rest\n- Two"),
+                         "<ul>\n<li><p>One</p>\n<p>the item&#x27;s rest</p></li>\n<li><p>Two</p></li>\n</ul>")
 
 
-class RenduDesBlocsDeCode(unittest.TestCase):
+class CodeBlockRendering(unittest.TestCase):
 
-    def test_un_bloc_de_code_garde_son_texte_echappe(self):
-        self.assertEqual(html("```\nsi a < b && c\n  # pas un titre\n```"),
-                         "<pre><code>si a &lt; b &amp;&amp; c\n  # pas un titre</code></pre>")
+    def test_a_code_block_keeps_its_text_escaped(self):
+        self.assertEqual(html("```\nif a < b && c\n  # not a heading\n```"),
+                         "<pre><code>if a &lt; b &amp;&amp; c\n  # not a heading</code></pre>")
 
-    def test_le_langage_du_bloc_devient_sa_classe(self):
+    def test_the_language_of_the_block_becomes_its_class(self):
         self.assertEqual(html("~~~sh\nkanban serve\n~~~"),
                          '<pre><code class="language-sh">kanban serve</code></pre>')
 
-    def test_seule_une_cloture_aussi_longue_du_meme_signe_ferme_le_bloc(self):
+    def test_only_a_closing_fence_as_long_and_of_the_same_sign_closes_the_block(self):
         self.assertEqual(html("````md\n```\n~~~~\n````"), '<pre><code class="language-md">```\n~~~~</code></pre>')
 
 
-class RenduDesCommentaires(unittest.TestCase):
+class CommentRendering(unittest.TestCase):
 
-    def test_un_commentaire_html_n_apparait_pas_sauf_dans_un_bloc_de_code(self):
-        self.assertEqual(html("Avant<!-- note\nsur deux lignes --> après\n\n"
-                              "<!-- Brouillon -->\n```\n<!-- gardé -->\n```"),
-                         "<p>Avant après</p>\n<pre><code>&lt;!-- gardé --&gt;</code></pre>")
-
-
-class RenduDesFilets(unittest.TestCase):
-
-    def test_une_ligne_de_tirets_d_etoiles_ou_de_soulignes_separe_deux_parties(self):
-        self.assertEqual(html("Avant\n\n---\n***\n- - -\n___\n\nAprès"),
-                         "<p>Avant</p>\n<hr>\n<hr>\n<hr>\n<hr>\n<p>Après</p>")
+    def test_an_html_comment_does_not_appear_except_in_a_code_block(self):
+        self.assertEqual(html("Before<!-- note\non two lines --> after\n\n"
+                              "<!-- Draft -->\n```\n<!-- kept -->\n```"),
+                         "<p>Before after</p>\n<pre><code>&lt;!-- kept --&gt;</code></pre>")
 
 
-class RenduDesCitations(unittest.TestCase):
+class ThematicBreakRendering(unittest.TestCase):
 
-    def test_une_citation_garde_ses_retours_a_la_ligne_comme_une_reponse_mot_pour_mot(self):
-        self.assertEqual(html("**Réponse**\n> Oui, reco.\n> Et le **mercredi** aussi.\n\nMémoire : R-024"),
-                         "<p><strong>Réponse</strong></p>\n<blockquote>\n"
-                         "<p>Oui, reco.<br>\nEt le <strong>mercredi</strong> aussi.</p>\n"
-                         "</blockquote>\n<p>Mémoire : R-024</p>")
+    def test_a_line_of_dashes_asterisks_or_underscores_separates_two_parts(self):
+        self.assertEqual(html("Before\n\n---\n***\n- - -\n___\n\nAfter"),
+                         "<p>Before</p>\n<hr>\n<hr>\n<hr>\n<hr>\n<p>After</p>")
 
 
-class RenduDesTableaux(unittest.TestCase):
+class BlockquoteRendering(unittest.TestCase):
 
-    def test_un_tableau_a_une_ligne_d_en_tete_et_des_lignes_de_donnees(self):
-        self.assertEqual(html("| Fichier | À lire quand… |\n|---|---|\n"
-                              "| [contexte.md](contexte.md) | **toujours** |"),
-                         "<table>\n<thead>\n<tr><th>Fichier</th><th>À lire quand…</th></tr>\n</thead>\n<tbody>\n"
-                         '<tr><td><a href="contexte.md">contexte.md</a></td>'
-                         '<td><strong>toujours</strong></td></tr>\n'
+    def test_a_blockquote_keeps_its_line_breaks_like_a_word_for_word_answer(self):
+        self.assertEqual(html("**Answer**\n> Yes, reco.\n> And **Wednesday** too.\n\nMemory: R-024"),
+                         "<p><strong>Answer</strong></p>\n<blockquote>\n"
+                         "<p>Yes, reco.<br>\nAnd <strong>Wednesday</strong> too.</p>\n"
+                         "</blockquote>\n<p>Memory: R-024</p>")
+
+
+class TableRendering(unittest.TestCase):
+
+    def test_a_table_has_a_header_row_and_data_rows(self):
+        self.assertEqual(html("| File | Read when… |\n|---|---|\n"
+                              "| [context.md](context.md) | **always** |"),
+                         "<table>\n<thead>\n<tr><th>File</th><th>Read when…</th></tr>\n</thead>\n<tbody>\n"
+                         '<tr><td><a href="context.md">context.md</a></td>'
+                         '<td><strong>always</strong></td></tr>\n'
                          "</tbody>\n</table>")
 
-    def test_une_barre_echappee_reste_dans_sa_cellule(self):
-        self.assertIn("<tr><td>matin <code>|</code> après-midi</td><td>2</td></tr>",
-                      html("| Demi-journées | Nombre |\n|---|---|\n| matin `\\|` après-midi | 2 |"))
+    def test_an_escaped_bar_stays_in_its_cell(self):
+        self.assertIn("<tr><td>morning <code>|</code> afternoon</td><td>2</td></tr>",
+                      html("| Half days | Count |\n|---|---|\n| morning `\\|` afternoon | 2 |"))
 
 
-def gherkin(*lignes):
-    return html("```gherkin\n" + "\n".join(lignes) + "\n```")
+def gherkin(*lines):
+    return html("```gherkin\n" + "\n".join(lines) + "\n```")
 
 
-def rendu_gherkin(contenu):
-    return f'<pre><code class="language-gherkin">{contenu}</code></pre>'
+def gherkin_block(content):
+    return f'<pre><code class="language-gherkin">{content}</code></pre>'
 
 
-class RenduDuGherkin(unittest.TestCase):
-    """Les blocs ```gherkin des fiches : mots-clés, titres, commentaires et variables mis en valeur."""
+class GherkinRendering(unittest.TestCase):
+    """The ```gherkin blocks of the specs: keywords, titles, comments and variables highlighted."""
 
-    def test_le_mot_cle_d_une_etape(self):
-        self.assertEqual(gherkin("    Quand j'ouvre Boutique"),
-                         rendu_gherkin('    <span class="gk-mot">Quand</span> j&#x27;ouvre Boutique'))
+    def test_the_keyword_of_a_step(self):
+        self.assertEqual(gherkin("    When I open Boutique's home page"),
+                         gherkin_block('    <span class="gk-keyword">When</span> I open Boutique&#x27;s home page'))
 
-    def test_le_mot_cle_et_le_titre_d_un_scenario(self):
-        self.assertEqual(gherkin("  Plan du scénario: Classe à un ou plusieurs niveaux"),
-                         rendu_gherkin('  <span class="gk-mot">Plan du scénario:</span>'
-                                       '<span class="gk-titre"> Classe à un ou plusieurs niveaux</span>'))
+    def test_the_keyword_and_the_title_of_a_scenario(self):
+        self.assertEqual(gherkin("  Scenario Outline: A class with one or several levels"),
+                         gherkin_block('  <span class="gk-keyword">Scenario Outline:</span>'
+                                       '<span class="gk-title"> A class with one or several levels</span>'))
 
-    def test_les_variables_d_un_plan_du_scenario(self):
-        self.assertEqual(gherkin("    Alors Boutique présente ma classe en <niveaux présentés>"),
-                         rendu_gherkin('    <span class="gk-mot">Alors</span> Boutique présente ma classe en '
-                                       '<span class="gk-variable">&lt;niveaux présentés&gt;</span>'))
+    def test_the_variables_of_a_scenario_outline(self):
+        self.assertEqual(gherkin("    Then Boutique shows my class as <levels shown>"),
+                         gherkin_block('    <span class="gk-keyword">Then</span> Boutique shows my class as '
+                                       '<span class="gk-variable">&lt;levels shown&gt;</span>'))
 
-    def test_un_commentaire_reste_un_commentaire(self):
-        self.assertEqual(gherkin("# language: fr", "  # Quand <rien> n'est dit"),
-                         rendu_gherkin('<span class="gk-commentaire"># language: fr</span>\n'
-                                       '  <span class="gk-commentaire">'
-                                       '# Quand &lt;rien&gt; n&#x27;est dit</span>'))
+    def test_a_comment_stays_a_comment(self):
+        self.assertEqual(gherkin("# language: en", "  # When <nothing> isn't said"),
+                         gherkin_block('<span class="gk-comment"># language: en</span>\n'
+                                       '  <span class="gk-comment">'
+                                       '# When &lt;nothing&gt; isn&#x27;t said</span>'))
+
+    def test_the_keywords_of_a_feature_file_written_in_french(self):
+        self.assertEqual(gherkin("  Plan du scénario: Une classe", "    Quand j'ouvre Boutique"),
+                         gherkin_block('  <span class="gk-keyword">Plan du scénario:</span>'
+                                       '<span class="gk-title"> Une classe</span>\n'
+                                       '    <span class="gk-keyword">Quand</span> j&#x27;ouvre Boutique'))
 
 
-class RenduDesLiens(unittest.TestCase):
+class LinkRendering(unittest.TestCase):
 
-    def test_un_lien_relatif_mene_a_l_autre_page_dans_le_meme_onglet(self):
-        self.assertEqual(html("voir le [glossaire](glossaire.md)"),
-                         '<p>voir le <a href="glossaire.md">glossaire</a></p>')
+    def test_a_relative_link_leads_to_the_other_page_in_the_same_tab(self):
+        self.assertEqual(html("see the [glossary](glossary.md)"),
+                         '<p>see the <a href="glossary.md">glossary</a></p>')
 
-    def test_un_lien_vers_un_autre_site_s_ouvre_dans_un_autre_onglet(self):
-        self.assertEqual(html("[Jira](https://exemple.atlassian.net/browse/BOU-1?a=1&b=2)"),
-                         '<p><a href="https://exemple.atlassian.net/browse/BOU-1?a=1&amp;b=2" target="_blank"'
+    def test_a_link_to_another_site_opens_in_another_tab(self):
+        self.assertEqual(html("[Jira](https://example.atlassian.net/browse/BOU-1?a=1&b=2)"),
+                         '<p><a href="https://example.atlassian.net/browse/BOU-1?a=1&amp;b=2" target="_blank"'
                          ' rel="noopener noreferrer">Jira</a></p>')
 
-    def test_un_lien_qui_executerait_du_code_ne_garde_que_son_texte(self):
-        self.assertEqual(html("[clic](JavaScript:alert`1`) [image](data:text/html;base64,PHNjcmlwdD4)"),
-                         "<p>clic image</p>")
+    def test_a_link_that_would_run_code_keeps_only_its_text(self):
+        self.assertEqual(html("[click](JavaScript:alert`1`) [image](data:text/html;base64,PHNjcmlwdD4)"),
+                         "<p>click image</p>")
 
-    def test_un_lien_vers_une_adresse_de_courriel(self):
-        self.assertEqual(html("[écrire](mailto:po@exemple.fr)"),
-                         '<p><a href="mailto:po@exemple.fr">écrire</a></p>')
+    def test_a_link_to_an_email_address(self):
+        self.assertEqual(html("[write](mailto:po@example.com)"),
+                         '<p><a href="mailto:po@example.com">write</a></p>')
 
 
-FICHE_ONBOARDING = """# Onboarding
+ONBOARDING_SPEC = """# Onboarding
 
-## Scénarios
+## Scenarios
 ```gherkin
-# language: fr
-Fonctionnalité: Première ouverture de Boutique
+Feature: First launch of Boutique
 
-  Scénario: Toute première ouverture
-    Étant donné que Boutique n'a encore jamais été ouverte
-    Quand j'ouvre Boutique
-    Alors Boutique me présente l'onboarding
+  Scenario: Very first launch
+    Given Boutique has never been opened
+    When I open Boutique
+    Then Boutique shows me the onboarding
 ```
 """
 

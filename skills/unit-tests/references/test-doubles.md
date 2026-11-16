@@ -1,8 +1,8 @@
 # Test doubles: examples and vocabulary
 
-The rules are in the skill ("Test doubles"); here, one example of each double on the same use case, the contract test that keeps a fake honest, and what each book calls a fake or a mock. The examples are hand-written, without any tool, to show the role of each double; the same with Mockito, Jest, Vitest or Jasmine is in the `test-conventions` skill.
+The rules are in the skill ("Test doubles"); here, the five doubles on a single example (placing an order), the contract test that keeps a fake honest, and what each book calls a fake or a mock. The examples are hand-written, without any tool, to show the role of each double; the same with Mockito, Jest, Vitest or Jasmine is in the `test-conventions` skill.
 
-## One use case, five doubles
+## One example, five doubles
 
 `PlaceOrder` places a customer's order: it asks the catalog for the price (a query), charges the customer (a command), stores the order (state), confirms it to the customer (a command), and dates it with today's date.
 
@@ -17,7 +17,7 @@ const refusingPaymentGateway: PaymentGateway = {
 }
 
 // Fake: an implementation that really works, in memory.
-// It has two sides: save and byId implement the Orders port,
+// It has two sides: save and byId implement the Orders interface,
 // the only methods the code under test sees; all() is for the test alone,
 // which holds the fake by its own type to read the state after the action.
 class InMemoryOrders implements Orders {
@@ -94,7 +94,7 @@ The spy keeps the Given / When / Then order and reads better; the mock is mostly
 
 ## The contract test of a fake
 
-A fake is only worth something if it behaves like the real adapter. A single test suite describes the port's contract; it runs against the fake (unit test) and against the real adapter (integration test), only the setup changes.
+A fake is only worth something if it behaves like the real implementation. A single test suite describes the interface's contract; it runs against the fake (unit test) and against the real implementation (the adapter's unit test, kept apart because slower), only the setup changes.
 
 ```ts
 function ordersContract(name: string, createOrders: () => Orders) {
@@ -115,7 +115,7 @@ function ordersContract(name: string, createOrders: () => Orders) {
 }
 
 ordersContract('InMemoryOrders', () => new InMemoryOrders())             // in-memory-orders.test.ts
-ordersContract('SqliteOrders', () => SqliteOrders.open(aTempDatabase())) // sqlite-orders.integration.test.ts
+ordersContract('SqliteOrders', () => SqliteOrders.open(aTempDatabase())) // sqlite-orders.test.ts
 ```
 
 In Java, an abstract class `OrdersContract` holds the tests and an `abstract Orders createOrders()` method; `InMemoryOrdersTest` and `JdbcOrdersIT` extend it.
