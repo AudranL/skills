@@ -49,14 +49,14 @@ Sixteen skills for Claude Code, GitHub Copilot and opencode: specify, design, de
 
 ### From skills.sh
 
-Six skills are published on [skills.sh](https://skills.sh): `clean-code`, `legacy-code`, `unit-tests`, `test-conventions`, `acceptance-tests` and `e2e-tests`.
+Eleven skills are published on [skills.sh](https://skills.sh): `clean-code`, `legacy-code`, `unit-tests`, `test-conventions`, `acceptance-tests`, `e2e-tests`, `golden-master`, `architecture-tests`, `architecture-styles`, `architecture-review` and `adr-writer`.
 
 ```sh
-npx skills add AudranL/skills                        # choose among the six
+npx skills add AudranL/skills                        # choose among the eleven
 npx skills add AudranL/skills --skill clean-code     # a single one
 ```
 
-The other ten carry `metadata.internal: true` in their frontmatter: the `skills` CLI hides them, and `install.sh` installs them as usual.
+The other five (`agent-memory`, `cyclomatic-complexity`, `kanban`, `spec-review`, `spec-writing`) carry `metadata.internal: true` in their frontmatter: the `skills` CLI hides them, and `install.sh` installs them as usual.
 
 ## Language
 

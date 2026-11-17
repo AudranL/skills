@@ -1,8 +1,6 @@
 ---
 name: adr-writer
 description: "Write, complete, supersede and deprecate ADRs (Architecture Decision Records) in any project, without a specialized agent: when a decision deserves an ADR; the project's conventions (folder, template, language and numbering of the existing ADRs, asked for when there are none); the default template; how to write each section (forces and their tensions, decision factors with thresholds, at least two options, consequences good and bad, how the decision is checked); the lifecycle (Draft, Accepted, Rejected, Deprecated, Supersedes) and corrections; the questions to ask. Load to create, write, update, deprecate or supersede an ADR, or when the user describes an architecture decision to record."
-metadata:
-  internal: true
 ---
 
 # ADR Writer

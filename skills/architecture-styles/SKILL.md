@@ -1,8 +1,6 @@
 ---
 name: architecture-styles
 description: "Catalog of architecture styles and their trade-offs, and diagnosis of an existing architecture: n-tier (strict or relaxed layers, the data-entry application without a domain layer), hexagonal in its original definition (port, adapter, primary and secondary sides, the other meaning of port), onion, clean architecture (what crosses a boundary), bounded contexts (relationships between two contexts and their owners, published language, anticorruption layer, reading an event timeline, aggregates and what must be true at once), microservices, the modular monolith on the way, and data ownership; splitting into modules (cohesion, no cycle, stability, what the whole application shares, a transaction across modules, naming a message, metrics); questions to ask before choosing (core, supporting and generic parts of the business, the code's language), which boundaries to build fully, partially or not yet, how to organize the code (by layer, by feature, ports and adapters, by component) and let the compiler hold it; diagnosis of an existing system (observe, deduce and have it validated, record, rewrite or evolve piece by piece). Load before recommending, comparing or evolving a style, when in doubt about a term (port, adapter, shared kernel, bounded context), to split code into modules or judge a split, to propose bounded contexts and aggregates from an event timeline, or to diagnose an architecture in place or decide between rewriting it and evolving it."
-metadata:
-  internal: true
 ---
 
 # Architecture styles

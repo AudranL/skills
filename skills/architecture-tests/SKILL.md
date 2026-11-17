@@ -1,8 +1,6 @@
 ---
 name: architecture-tests
 description: "Write, review and maintain architecture tests (fitness functions) that check a project's structural rules: direction of dependencies between layers, boundaries between modules or bounded contexts, no cycles, every source file in a declared zone, folders reserved for types, forbidden imports, naming conventions, metrics with a threshold. First lets the compiler hold what it can (visibility, build modules, package exports), then picks the tool for the stack: ArchUnit (with jMolecules or Spring Modulith) in Java or Kotlin; a hand-written test with the TypeScript compiler, dependency-cruiser, eslint-plugin-boundaries or Nx module boundaries in TypeScript or JavaScript. Use to set up an architecture test, turn an ADR's rule into a test, freeze existing violations, or review an architecture test that passes too easily."
-metadata:
-  internal: true
 ---
 
 # Architecture tests
