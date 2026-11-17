@@ -1,6 +1,8 @@
 ---
 name: golden-master
 description: "Put a golden master (characterization test, approval test) on existing Java / Spring Boot code to freeze its current behavior before a refactoring: ApprovalTests.Java over a combinatorial generation of the inputs (CombinationApprovals), then proof that the net holds with JaCoCo (branch coverage) and PIT (mutation testing). Covers pure code (mappers, utilities, calculation rules) as well as services with dependencies (mocks that record the calls, clock and randomness under control). Load as soon as the user mentions a golden master, a characterization test, an approval test, a snapshot test, legacy code without tests, securing a class before refactoring it, or asks how to touch some code without breaking anything, even without the words golden master. Scope: a Maven project. The skill stops at the safety net and proposes a refactoring plan; it does not refactor."
+metadata:
+  internal: true
 ---
 
 # Golden master for Java / Spring Boot

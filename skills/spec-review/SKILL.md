@@ -1,6 +1,8 @@
 ---
 name: spec-review
 description: "Review of a spec before development, by three (the \"three amigos\": product owner, architect, tester): when it happens, what each one brings, the questions every reviewer asks; the architecture angle (implicit qualities made measurable, external systems and the relationship with their owner, what the existing platform already provides, bounded contexts, what must be true at once and what can be true a little later, technical uncertainty and the timeboxed investigation, which versions are delivered and the migrations they call for, splitting, walking skeleton); the testing angle (paths that fail, every path to a refused action, one proposal per real risk, the non-functional requirements touched, the main journey); non-functional requirements (measurable template, what a miss costs, typical and worst case, who proposes, sets, challenges, validates and verifies them, the shared file); what a reviewer returns, and on the product owner's side, each remark integrated or set aside with its reason. Load to review a spec from the architecture or the testing angle, to integrate the reviewers' remarks, or to propose, challenge, validate, verify or file a non-functional requirement."
+metadata:
+  internal: true
 ---
 
 # Reviewing a spec by three

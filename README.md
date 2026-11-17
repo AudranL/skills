@@ -47,6 +47,17 @@ Sixteen skills for Claude Code, GitHub Copilot and opencode: specify, design, de
 | GitHub Copilot | `~/.copilot/skills/<name>/` | `.github/skills/<name>/` |
 | opencode | `~/.config/opencode/skills/<name>/` | `.opencode/skills/<name>/` |
 
+### From skills.sh
+
+Six skills are published on [skills.sh](https://skills.sh): `clean-code`, `legacy-code`, `unit-tests`, `test-conventions`, `acceptance-tests` and `e2e-tests`.
+
+```sh
+npx skills add AudranL/skills                        # choose among the six
+npx skills add AudranL/skills --skill clean-code     # a single one
+```
+
+The other ten carry `metadata.internal: true` in their frontmatter: the `skills` CLI hides them, and `install.sh` installs them as usual.
+
 ## Language
 
 The skills are written in English; their code and test examples follow the conventions of each stack.

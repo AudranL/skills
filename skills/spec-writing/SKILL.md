@@ -1,6 +1,8 @@
 ---
 name: spec-writing
 description: "Split a feature into deliverable slices and write the spec of one slice: feature map, what each slice must pass, vertical slices that end where the user is done, ways to split and splits to refuse, walking skeleton, spike, re-splitting when the scope changes; rules, examples and questions side by side, which examples and when to stop, an external system taken from its contract, what is not specified, bugs and spikes; Gherkin in business words (what Given, When and Then each hold, only the values that carry the rule, both sides of a threshold, fixed dates, one behavior per scenario, a refusal written by its effect, \"only\" also written in the negative, Background and Scenario Outline used sparingly, French keywords); spec template, its language and location, a spec that changes once ready. Load before proposing or revising a split, and before writing, completing or correcting the scenarios or the spec of a slice; read it also to propose a scenario in the style of a spec or to name the test of a scenario."
+metadata:
+  internal: true
 ---
 
 # Splitting a feature and specifying a slice

@@ -1,6 +1,8 @@
 ---
 name: architecture-review
 description: "Architecture review of a diff, a branch or a delivered slice: what to read first (ADRs, style, the slice's instructions, the architecture tests run); direction of dependencies, a domain free of any framework, an external system's model kept in its adapter, simple data crossing the boundaries, business rules in the domain, ports that are conversations, one aggregate changed per transaction, dependencies between contexts, implementations not public, a new module declared to the architecture tests, a mechanism the platform already provides not doubled; architecture tests not weakened and frozen violations that did not grow, a decision taken in the code without its ADR, a new build dependency justified by an ADR; ranking the remarks (blocking, important, suggestion) and their form, a recurring remark turned into a test; debt outside the scope; debt proposed to the product owner as a slice, by what it costs and what it brings. Load for any architecture review of a code change, or to turn an architecture debt into a slice."
+metadata:
+  internal: true
 ---
 
 # Architecture review

@@ -1,6 +1,8 @@
 ---
 name: kanban
 description: "Local Markdown backlog, Jira style, versioned with the repo: one ticket per file in docs/backlog/ (epic, story, task, spike, bug), a kanban board in the terminal or in the browser (reloaded live, with the project documentation read-only: specs and their Gherkin scenarios, documentation written for humans), refinement notes where the questions asked and the user's answers are filed word for word as they come, and pushing to Jira through the Atlassian MCP. Use to show the board, create, read, move or check a ticket, add a refinement note, bootstrap a backlog in a repo, or push tickets to Jira. It is the product-owner's tool for keeping the backlog."
+metadata:
+  internal: true
 ---
 
 # Kanban: the local backlog

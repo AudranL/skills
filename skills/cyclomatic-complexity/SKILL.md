@@ -1,6 +1,8 @@
 ---
 name: cyclomatic-complexity
 description: "Measure the cyclomatic complexity (McCabe) of a method, a class or a set of Java, TypeScript or JavaScript files, to tell quickly whether the code still reads well or needs refactoring: a script (mccabe.py) that counts the decision points of each method and totals them per class; thresholds (10 per method, above 20 refactor first, a class total as a hint); how to read the result and when to measure (refactor step of TDD, before changing existing code, in review, before and after a refactoring); the refactoring that reduces each kind of decision point, without gaming the number; the script's limits. Load when the user mentions cyclomatic complexity, McCabe, a method too complex or too long, asks \"should I refactor this?\", wants quick feedback on readability or on complexity debt, or before and after a refactoring to show the gain, even without saying McCabe. Measures and recommends; never refactors without a safety net of tests."
+metadata:
+  internal: true
 ---
 
 # Cyclomatic complexity

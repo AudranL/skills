@@ -1,6 +1,8 @@
 ---
 name: agent-memory
 description: "Protocol for the memory an AI agent keeps in a project (for instance docs/ai/agent-name/): an index that says when to read each file; one entry per heading, whose title states the fact; three statuses (confirmed, verified, deduced), what each one settles, and how a deduced entry gets validated (by the user for an intent, by running it for a fact about the code); a source that says what makes the entry true today; dated quotes of what an entry relies on, code included, references only to a numbered item; an entry rewritten rather than appended to; dated snapshots; decisions, questions and debt; bootstrapping with the project's consent; pruning before splitting; handing entries over to another agent; reporting changes, and the separate commit. Load at the start of any task that relies on the memory, and before bootstrapping it, writing or correcting an entry, reorganizing it, or handing entries over to another agent."
+metadata:
+  internal: true
 ---
 
 # An agent's memory in a project
